@@ -1,15 +1,15 @@
 
 package com.tastedna.session;
 
-import org.springframework.dao.DuplicateKeyException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
 import tools.jackson.databind.json.JsonMapper;
 
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -17,75 +17,59 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class TestSessionService {
 
-    private final JdbcTemplate jdbc;
+    private final TestDefinitionRepository definitionRepository;
+    private final QuestionDefinitionRepository questionRepository;
+    private final TestSessionRepository sessionRepository;
     private final JsonMapper mapper;
-
-    public TestSessionService(
-            JdbcTemplate jdbc,
-            JsonMapper mapper) {
-
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     @Transactional
     public SessionDtos.SessionResponse start(
             String memberId,
             SessionDtos.StartRequest request) {
 
-        List<String> active = jdbc.queryForList("""
-            SELECT session_id
-            FROM td_test_session
-            WHERE mall_member_id = ?
-              AND status IN ('IN_PROGRESS', 'SUBMITTED')
-            """, String.class, memberId);
+        // 한 회원의 진행 중인 테스트 중복 생성 방지
+        boolean hasActiveSession = !sessionRepository
+                .findByMallMemberIdAndStatusIn(
+                        memberId,
+                        List.of("IN_PROGRESS", "SUBMITTED")
+                ).isEmpty();
 
-        if (!active.isEmpty()) {
+        if (hasActiveSession) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "ACTIVE_SESSION_EXISTS");
+                    "ACTIVE_SESSION_EXISTS"
+            );
         }
 
-        var definitions = jdbc.query("""
-            SELECT definition_id, question_count
-            FROM td_test_definition
-            WHERE test_mode = ?
-              AND active = 1
-            """,
-                (rs, row) -> new Definition(
-                        rs.getString("definition_id"),
-                        rs.getInt("question_count")),
-                request.mode().name()
-        );
+        // 현재 활성화된 테스트 정의 조회
+        TestDefinition definition = definitionRepository
+                .findByTestModeAndActiveTrue(request.mode().name())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "ACTIVE_DEFINITION_NOT_FOUND"
+                ));
 
-        if (definitions.size() != 1) {
+        // 테스트 정의에 속한 질문 조회
+        List<QuestionDefinition> questions = questionRepository
+                .findByIdDefinitionIdOrderByDisplayOrderAsc(
+                        definition.getDefinitionId()
+                );
+
+        if (questions.size() != definition.getQuestionCount()) {
             throw new ResponseStatusException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
-                    "ACTIVE_DEFINITION_NOT_FOUND");
+                    "QUESTION_SET_INCOMPLETE"
+            );
         }
 
-        Definition definition = definitions.get(0);
+        List<String> questionIds = questions.stream()
+                .map(q -> q.getId().getQuestionId())
+                .toList();
 
-        List<String> questionIds = jdbc.queryForList("""
-            SELECT question_id
-            FROM td_question_definition
-            WHERE definition_id = ?
-            ORDER BY display_order
-            """,
-                String.class,
-                definition.id()
-        );
-
-        if (questionIds.size() != definition.count()) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "QUESTION_SET_INCOMPLETE");
-        }
-
-        String questionOrder =
-                mapper.writeValueAsString(questionIds);
+        String questionOrder = mapper.writeValueAsString(questionIds);
 
         UUID sessionId = UUID.randomUUID();
 
@@ -96,107 +80,74 @@ public class TestSessionService {
                 LocalDateTime.ofInstant(now, ZoneOffset.UTC);
 
         LocalDateTime dbLease =
-                LocalDateTime.ofInstant(
-                        leaseUntil, ZoneOffset.UTC);
+                LocalDateTime.ofInstant(leaseUntil, ZoneOffset.UTC);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                memberId,
+                definition.getDefinitionId(),
+                request.apparelScope().name().toUpperCase(),
+                questionOrder,
+                dbNow,
+                dbLease
+        );
 
         try {
-            jdbc.update("""
-                INSERT INTO td_test_session (
-                    session_id,
-                    mall_member_id,
-                    definition_id,
-                    apparel_scope,
-                    status,
-                    revision,
-                    question_order,
-                    last_seen_at,
-                    lease_until,
-                    started_at
-                )
-                VALUES (
-                    ?, ?, ?, ?, 'IN_PROGRESS',
-                    0, ?, ?, ?, ?
-                )
-                """,
-                    sessionId.toString(),
-                    memberId,
-                    definition.id(),
-                    request.apparelScope().name().toUpperCase(),
-                    questionOrder,
-                    Timestamp.valueOf(dbNow),
-                    Timestamp.valueOf(dbLease),
-                    Timestamp.valueOf(dbNow)
-            );
-
-        } catch (DuplicateKeyException e) {
+            // DB의 활성 회원 유일성 제약도 유지
+            sessionRepository.saveAndFlush(session);
+        } catch (DataIntegrityViolationException e) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "ACTIVE_SESSION_EXISTS",
-                    e);
+                    e
+            );
         }
 
-        return new SessionDtos.SessionResponse(
-                sessionId,
-                request.mode(),
-                request.apparelScope(),
-                "IN_PROGRESS",
-                0,
-                UUID.fromString(definition.id()),
-                leaseUntil
-        );
+        return toResponse(session, definition.getTestMode());
     }
-
 
     @Transactional(readOnly = true)
     public SessionDtos.SessionResponse get(
             String memberId,
             UUID sessionId) {
 
-        var rows = jdbc.query("""
-            SELECT
-                s.session_id,
-                s.definition_id,
-                d.test_mode,
-                s.apparel_scope,
-                s.status,
-                s.revision,
-                s.lease_until
-            FROM td_test_session s
-            JOIN td_test_definition d
-                ON s.definition_id = d.definition_id
-            WHERE s.session_id = ?
-              AND s.mall_member_id = ?
-            """,
-                (rs, rowNum) -> new SessionDtos.SessionResponse(
-                        UUID.fromString(rs.getString("session_id")),
-                        SessionDtos.Mode.valueOf(rs.getString("test_mode")),
-                        SessionDtos.ApparelScope.valueOf(
-                                rs.getString("apparel_scope").toLowerCase()
-                        ),
-                        rs.getString("status"),
-                        rs.getLong("revision"),
-                        UUID.fromString(rs.getString("definition_id")),
-                        rs.getTimestamp("lease_until")
-                                .toLocalDateTime()
-                                .toInstant(ZoneOffset.UTC)
-                ),
-                sessionId.toString(),
-                memberId
-        );
+        TestSession session = sessionRepository
+                .findBySessionIdAndMallMemberId(
+                        sessionId.toString(),
+                        memberId
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "SESSION_NOT_FOUND"
+                ));
 
-        if (rows.isEmpty()) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "SESSION_NOT_FOUND"
-            );
-        }
+        TestDefinition definition = definitionRepository
+                .findById(session.getDefinitionId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "SESSION_DEFINITION_NOT_FOUND"
+                ));
 
-        return rows.get(0);
+        return toResponse(session, definition.getTestMode());
     }
 
+    private SessionDtos.SessionResponse toResponse(
+            TestSession session,
+            String testMode) {
 
-    private record Definition(
-            String id,
-            int count
-    ) {}
+        Instant leaseUntil = session.getLeaseUntil()
+                .toInstant(ZoneOffset.UTC);
+
+        return new SessionDtos.SessionResponse(
+                UUID.fromString(session.getSessionId()),
+                SessionDtos.Mode.valueOf(testMode),
+                SessionDtos.ApparelScope.valueOf(
+                        session.getApparelScope().toLowerCase()
+                ),
+                session.getStatus(),
+                session.getRevision(),
+                UUID.fromString(session.getDefinitionId()),
+                leaseUntil
+        );
+    }
 }
