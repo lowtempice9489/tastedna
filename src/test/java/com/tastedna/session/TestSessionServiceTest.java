@@ -85,8 +85,8 @@ class TestSessionServiceTest {
         );
 
         assertEquals(
-                HttpStatus.UNPROCESSABLE_ENTITY,
-                exception.getStatusCode()
+                422,
+                exception.getStatusCode().value()
         );
 
         assertEquals(
@@ -237,5 +237,122 @@ class TestSessionServiceTest {
         assertEquals("IN_PROGRESS", response.status());
         assertEquals(0L, response.revision());
         assertNotNull(response.leaseUntil());
+    }
+
+    @Test
+    void activeSessionCanBeFoundAfterLeaseExpires() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime past =
+                LocalDateTime.now(java.time.Clock.systemUTC())
+                        .minusHours(1);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q01\"]",
+                past,
+                past.plusMinutes(2)
+        );
+
+        TestDefinition definition = mock(TestDefinition.class);
+
+        when(sessionRepository.findByMallMemberIdAndStatusIn(
+                "dev-member-001",
+                List.of("IN_PROGRESS", "SUBMITTED")
+        )).thenReturn(List.of(session));
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        Optional<SessionDtos.SessionResponse> result =
+                service.findActive("dev-member-001");
+
+        assertTrue(result.isPresent());
+        assertEquals(sessionId, result.get().sessionId());
+        assertEquals("IN_PROGRESS", result.get().status());
+        assertTrue(result.get().leaseUntil().isBefore(
+                java.time.Instant.now()
+        ));
+
+        verify(sessionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void noActiveSessionReturnsEmpty() {
+
+        when(sessionRepository.findByMallMemberIdAndStatusIn(
+                "dev-member-001",
+                List.of("IN_PROGRESS", "SUBMITTED")
+        )).thenReturn(List.of());
+
+        Optional<SessionDtos.SessionResponse> result =
+                service.findActive("dev-member-001");
+
+        assertTrue(result.isEmpty());
+
+        verifyNoInteractions(definitionRepository, questionRepository);
+        verify(sessionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void resumeSessionUpdatesLeaseSuccessfully() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime past =
+                LocalDateTime.now(java.time.Clock.systemUTC())
+                        .minusHours(1);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q01\"]",
+                past,
+                past.plusMinutes(2)
+        );
+
+        TestDefinition definition = mock(TestDefinition.class);
+
+        when(sessionRepository.findBySessionIdAndMallMemberId(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        SessionDtos.SessionResponse response =
+                service.resume("dev-member-001", sessionId);
+
+        assertEquals(sessionId, response.sessionId());
+        assertEquals("IN_PROGRESS", response.status());
+        assertEquals(0L, response.revision());
+
+        assertTrue(session.getLastSeenAt().isAfter(past));
+        assertTrue(session.getLeaseUntil().isAfter(
+                session.getLastSeenAt()
+        ));
+
+        assertEquals(
+                session.getLeaseUntil()
+                        .toInstant(java.time.ZoneOffset.UTC),
+                response.leaseUntil()
+        );
     }
 }

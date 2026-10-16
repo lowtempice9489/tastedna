@@ -84,4 +84,24 @@ public class TestSession {
         this.leaseUntil = leaseUntil;
         this.startedAt = now;
     }
+
+    public void resume(
+            LocalDateTime now,
+            LocalDateTime newLeaseUntil) {
+
+        if (!"IN_PROGRESS".equals(status)) {
+            throw new IllegalStateException(
+                    "SESSION_NOT_RESUMABLE"
+            );
+        }
+
+        if (!newLeaseUntil.isAfter(now)) {
+            throw new IllegalArgumentException(
+                    "INVALID_LEASE_UNTIL"
+            );
+        }
+
+        this.lastSeenAt = now;
+        this.leaseUntil = newLeaseUntil;
+    }
 }

@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -30,7 +31,6 @@ public class TestSessionService {
             String memberId,
             SessionDtos.StartRequest request) {
 
-        // 한 회원의 진행 중인 테스트 중복 생성 방지
         boolean hasActiveSession = !sessionRepository
                 .findByMallMemberIdAndStatusIn(
                         memberId,
@@ -44,15 +44,13 @@ public class TestSessionService {
             );
         }
 
-        // 현재 활성화된 테스트 정의 조회
         TestDefinition definition = definitionRepository
                 .findByTestModeAndActiveTrue(request.mode().name())
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        HttpStatus.UNPROCESSABLE_CONTENT,
                         "ACTIVE_DEFINITION_NOT_FOUND"
                 ));
 
-        // 테스트 정의에 속한 질문 조회
         List<QuestionDefinition> questions = questionRepository
                 .findByIdDefinitionIdOrderByDisplayOrderAsc(
                         definition.getDefinitionId()
@@ -60,7 +58,7 @@ public class TestSessionService {
 
         if (questions.size() != definition.getQuestionCount()) {
             throw new ResponseStatusException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
                     "QUESTION_SET_INCOMPLETE"
             );
         }
@@ -93,7 +91,6 @@ public class TestSessionService {
         );
 
         try {
-            // DB의 활성 회원 유일성 제약도 유지
             sessionRepository.saveAndFlush(session);
         } catch (DataIntegrityViolationException e) {
             throw new ResponseStatusException(
@@ -124,9 +121,82 @@ public class TestSessionService {
         TestDefinition definition = definitionRepository
                 .findById(session.getDefinitionId())
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        HttpStatus.UNPROCESSABLE_CONTENT,
                         "SESSION_DEFINITION_NOT_FOUND"
                 ));
+
+        return toResponse(session, definition.getTestMode());
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<SessionDtos.SessionResponse> findActive(
+            String memberId) {
+
+        List<TestSession> activeSessions = sessionRepository
+                .findByMallMemberIdAndStatusIn(
+                        memberId,
+                        List.of("IN_PROGRESS", "SUBMITTED")
+                );
+
+        if (activeSessions.isEmpty()) {
+            return Optional.empty();
+        }
+
+        TestSession session = activeSessions.getFirst();
+
+        TestDefinition definition = definitionRepository
+                .findById(session.getDefinitionId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "SESSION_DEFINITION_NOT_FOUND"
+                ));
+
+        return Optional.of(
+                toResponse(session, definition.getTestMode())
+        );
+    }
+
+    @Transactional
+    public SessionDtos.SessionResponse resume(
+            String memberId,
+            UUID sessionId) {
+
+        TestSession session = sessionRepository
+                .findBySessionIdAndMallMemberId(
+                        sessionId.toString(),
+                        memberId
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "SESSION_NOT_FOUND"
+                ));
+
+        if (!"IN_PROGRESS".equals(session.getStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "SESSION_NOT_RESUMABLE"
+            );
+        }
+
+        TestDefinition definition = definitionRepository
+                .findById(session.getDefinitionId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "SESSION_DEFINITION_NOT_FOUND"
+                ));
+
+        Instant now = Instant.now();
+
+        LocalDateTime dbNow =
+                LocalDateTime.ofInstant(now, ZoneOffset.UTC);
+
+        LocalDateTime dbLease =
+                LocalDateTime.ofInstant(
+                        now.plusSeconds(120),
+                        ZoneOffset.UTC
+                );
+
+        session.resume(dbNow, dbLease);
 
         return toResponse(session, definition.getTestMode());
     }
