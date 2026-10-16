@@ -1,6 +1,7 @@
+package com.tastedna.definition.persistence;
 
-package com.tastedna.session;
-
+import com.tastedna.definition.domain.QuestionDefinition;
+import com.tastedna.definition.domain.QuestionDefinitionId;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

@@ -1,6 +1,12 @@
+package com.tastedna.session.application;
 
-package com.tastedna.session;
-
+import com.tastedna.definition.domain.QuestionDefinition;
+import com.tastedna.definition.domain.TestDefinition;
+import com.tastedna.definition.persistence.QuestionDefinitionRepository;
+import com.tastedna.definition.persistence.TestDefinitionRepository;
+import com.tastedna.session.api.dto.*;
+import com.tastedna.session.domain.TestSession;
+import com.tastedna.session.persistence.TestSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -27,9 +33,9 @@ public class TestSessionService {
     private final JsonMapper mapper;
 
     @Transactional
-    public SessionDtos.SessionResponse start(
+    public SessionResponse start(
             String memberId,
-            SessionDtos.StartRequest request) {
+            StartSessionRequest request) {
 
         boolean hasActiveSession = !sessionRepository
                 .findByMallMemberIdAndStatusIn(
@@ -104,7 +110,7 @@ public class TestSessionService {
     }
 
     @Transactional(readOnly = true)
-    public SessionDtos.SessionResponse get(
+    public SessionResponse get(
             String memberId,
             UUID sessionId) {
 
@@ -129,7 +135,7 @@ public class TestSessionService {
     }
 
     @Transactional(readOnly = true)
-    public Optional<SessionDtos.SessionResponse> findActive(
+    public Optional<SessionResponse> findActive(
             String memberId) {
 
         List<TestSession> activeSessions = sessionRepository
@@ -157,7 +163,7 @@ public class TestSessionService {
     }
 
     @Transactional
-    public SessionDtos.SessionResponse resume(
+    public SessionResponse resume(
             String memberId,
             UUID sessionId) {
 
@@ -201,17 +207,17 @@ public class TestSessionService {
         return toResponse(session, definition.getTestMode());
     }
 
-    private SessionDtos.SessionResponse toResponse(
+    private SessionResponse toResponse(
             TestSession session,
             String testMode) {
 
         Instant leaseUntil = session.getLeaseUntil()
                 .toInstant(ZoneOffset.UTC);
 
-        return new SessionDtos.SessionResponse(
+        return new SessionResponse(
                 UUID.fromString(session.getSessionId()),
-                SessionDtos.Mode.valueOf(testMode),
-                SessionDtos.ApparelScope.valueOf(
+                Mode.valueOf(testMode),
+                ApparelScope.valueOf(
                         session.getApparelScope().toLowerCase()
                 ),
                 session.getStatus(),

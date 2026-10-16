@@ -1,4 +1,3 @@
-
 package com.tastedna.config;
 
 import org.springframework.context.annotation.Bean;

@@ -1,6 +1,6 @@
-
 package com.tastedna.session;
 
+import com.tastedna.session.domain.TestSession;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;

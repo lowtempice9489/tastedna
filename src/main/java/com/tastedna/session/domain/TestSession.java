@@ -1,5 +1,4 @@
-
-package com.tastedna.session;
+package com.tastedna.session.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

@@ -1,6 +1,7 @@
 
-package com.tastedna.session;
+package com.tastedna.session.api;
 
+import com.tastedna.session.api.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -13,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class SessionExceptionHandler {
 
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<SessionDtos.ErrorResponse> handleResponseStatus(
+    public ResponseEntity<ErrorResponse> handleResponseStatus(
             ResponseStatusException exception) {
 
         String code = exception.getReason();
@@ -44,28 +45,28 @@ public class SessionExceptionHandler {
 
         return ResponseEntity
                 .status(exception.getStatusCode())
-                .body(new SessionDtos.ErrorResponse(code, message));
+                .body(new ErrorResponse(code, message));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<SessionDtos.ErrorResponse> handleInvalidJson(
+    public ResponseEntity<ErrorResponse> handleInvalidJson(
             HttpMessageNotReadableException exception) {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(new SessionDtos.ErrorResponse(
+                .body(new ErrorResponse(
                         "INVALID_REQUEST_BODY",
                         "요청 본문의 JSON 형식이나 입력값이 올바르지 않습니다."
                 ));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<SessionDtos.ErrorResponse> handleValidation(
+    public ResponseEntity<ErrorResponse> handleValidation(
             MethodArgumentNotValidException exception) {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(new SessionDtos.ErrorResponse(
+                .body(new ErrorResponse(
                         "VALIDATION_FAILED",
                         "필수 입력값이 누락되었거나 올바르지 않습니다."
                 ));

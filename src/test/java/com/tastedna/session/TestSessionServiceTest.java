@@ -1,6 +1,14 @@
-
 package com.tastedna.session;
 
+import com.tastedna.definition.domain.QuestionDefinition;
+import com.tastedna.definition.domain.QuestionDefinitionId;
+import com.tastedna.definition.domain.TestDefinition;
+import com.tastedna.definition.persistence.QuestionDefinitionRepository;
+import com.tastedna.definition.persistence.TestDefinitionRepository;
+import com.tastedna.session.api.dto.*;
+import com.tastedna.session.application.TestSessionService;
+import com.tastedna.session.domain.TestSession;
+import com.tastedna.session.persistence.TestSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,13 +46,13 @@ class TestSessionServiceTest {
     @InjectMocks
     private TestSessionService service;
 
-    private SessionDtos.StartRequest request;
+    private StartSessionRequest request;
 
     @BeforeEach
     void setUp() {
-        request = new SessionDtos.StartRequest(
-                SessionDtos.Mode.SIMPLE,
-                SessionDtos.ApparelScope.mens
+        request = new StartSessionRequest(
+                Mode.SIMPLE,
+                ApparelScope.mens
         );
     }
 
@@ -149,16 +157,13 @@ class TestSessionServiceTest {
         when(definition.getTestMode())
                 .thenReturn("SIMPLE");
 
-        SessionDtos.SessionResponse response =
+        SessionResponse response =
                 service.get("dev-member-001", sessionId);
 
         assertEquals(sessionId, response.sessionId());
         assertEquals(definitionId, response.definitionId());
-        assertEquals(SessionDtos.Mode.SIMPLE, response.mode());
-        assertEquals(
-                SessionDtos.ApparelScope.mens,
-                response.apparelScope()
-        );
+        assertEquals("SIMPLE", response.mode().name());
+        assertEquals("mens", response.apparelScope().name());
         assertEquals("IN_PROGRESS", response.status());
         assertEquals(0L, response.revision());
 
@@ -210,7 +215,7 @@ class TestSessionServiceTest {
         when(mapper.writeValueAsString(List.of("DEV_Q01")))
                 .thenReturn("[\"DEV_Q01\"]");
 
-        SessionDtos.SessionResponse response =
+        SessionResponse response =
                 service.start("dev-member-001", request);
 
         var captor = org.mockito.ArgumentCaptor.forClass(
@@ -232,8 +237,8 @@ class TestSessionServiceTest {
                 UUID.fromString(saved.getSessionId()),
                 response.sessionId()
         );
-        assertEquals(SessionDtos.Mode.SIMPLE, response.mode());
-        assertEquals(SessionDtos.ApparelScope.mens, response.apparelScope());
+        assertEquals("SIMPLE", response.mode().name());
+        assertEquals("mens", response.apparelScope().name());
         assertEquals("IN_PROGRESS", response.status());
         assertEquals(0L, response.revision());
         assertNotNull(response.leaseUntil());
@@ -273,7 +278,7 @@ class TestSessionServiceTest {
         when(definition.getTestMode())
                 .thenReturn("SIMPLE");
 
-        Optional<SessionDtos.SessionResponse> result =
+        Optional<SessionResponse> result =
                 service.findActive("dev-member-001");
 
         assertTrue(result.isPresent());
@@ -294,7 +299,7 @@ class TestSessionServiceTest {
                 List.of("IN_PROGRESS", "SUBMITTED")
         )).thenReturn(List.of());
 
-        Optional<SessionDtos.SessionResponse> result =
+        Optional<SessionResponse> result =
                 service.findActive("dev-member-001");
 
         assertTrue(result.isEmpty());
@@ -337,7 +342,7 @@ class TestSessionServiceTest {
         when(definition.getTestMode())
                 .thenReturn("SIMPLE");
 
-        SessionDtos.SessionResponse response =
+        SessionResponse response =
                 service.resume("dev-member-001", sessionId);
 
         assertEquals(sessionId, response.sessionId());

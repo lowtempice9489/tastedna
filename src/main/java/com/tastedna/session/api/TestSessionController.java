@@ -1,6 +1,9 @@
 
-package com.tastedna.session;
+package com.tastedna.session.api;
 
+import com.tastedna.session.application.TestSessionService;
+import com.tastedna.session.api.dto.SessionResponse;
+import com.tastedna.session.api.dto.StartSessionRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -19,8 +22,8 @@ public class TestSessionController {
     }
 
     @PostMapping
-    public ResponseEntity<SessionDtos.SessionResponse> start(
-            @Valid @RequestBody SessionDtos.StartRequest request,
+    public ResponseEntity<SessionResponse> start(
+            @Valid @RequestBody StartSessionRequest request,
             Authentication authentication) {
 
         return ResponseEntity.ok(
@@ -29,7 +32,7 @@ public class TestSessionController {
     }
 
     @GetMapping("/active")
-    public ResponseEntity<SessionDtos.SessionResponse> active(
+    public ResponseEntity<SessionResponse> active(
             Authentication authentication) {
 
         return service.findActive(authentication.getName())
@@ -38,7 +41,7 @@ public class TestSessionController {
     }
 
     @PostMapping("/{sessionId}/resume")
-    public ResponseEntity<SessionDtos.SessionResponse> resume(
+    public ResponseEntity<SessionResponse> resume(
             @PathVariable UUID sessionId,
             Authentication authentication) {
 
@@ -48,7 +51,7 @@ public class TestSessionController {
     }
 
     @GetMapping("/{sessionId}")
-    public ResponseEntity<SessionDtos.SessionResponse> get(
+    public ResponseEntity<SessionResponse> get(
             @PathVariable UUID sessionId,
             Authentication authentication) {
 

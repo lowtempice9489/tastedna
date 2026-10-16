@@ -1,4 +1,3 @@
-
 package com.tastedna.health;
 
 import org.springframework.web.bind.annotation.GetMapping;

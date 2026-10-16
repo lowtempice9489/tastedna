@@ -1,6 +1,6 @@
+package com.tastedna.definition.persistence;
 
-package com.tastedna.session;
-
+import com.tastedna.definition.domain.TestDefinition;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

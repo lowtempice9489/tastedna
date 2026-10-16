@@ -1,6 +1,6 @@
-
 package com.tastedna.session;
 
+import com.tastedna.session.api.SessionExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -35,14 +35,14 @@ class SessionExceptionHandlerTest {
     void missingDefinitionReturns422() {
 
         var exception = new ResponseStatusException(
-                HttpStatus.UNPROCESSABLE_ENTITY,
+                HttpStatus.UNPROCESSABLE_CONTENT,
                 "ACTIVE_DEFINITION_NOT_FOUND"
         );
 
         var response = handler.handleResponseStatus(exception);
 
         assertEquals(
-                HttpStatus.UNPROCESSABLE_ENTITY,
+                HttpStatus.UNPROCESSABLE_CONTENT,
                 response.getStatusCode()
         );
 
