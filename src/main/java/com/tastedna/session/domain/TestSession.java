@@ -103,4 +103,28 @@ public class TestSession {
         this.lastSeenAt = now;
         this.leaseUntil = newLeaseUntil;
     }
+
+    public void advanceRevision(long expectedRevision) {
+
+        if (!"IN_PROGRESS".equals(status)) {
+            throw new IllegalStateException(
+                    "SESSION_NOT_EDITABLE"
+            );
+        }
+
+        if (expectedRevision != revision) {
+            throw new IllegalStateException(
+                    "SESSION_REVISION_CONFLICT"
+            );
+        }
+
+        if (revision == Long.MAX_VALUE) {
+            throw new IllegalStateException(
+                    "SESSION_REVISION_OVERFLOW"
+            );
+        }
+
+        this.revision++;
+    }
+
 }

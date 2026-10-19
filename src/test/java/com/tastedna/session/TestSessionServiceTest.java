@@ -8,6 +8,7 @@ import com.tastedna.definition.persistence.TestDefinitionRepository;
 import com.tastedna.session.api.dto.*;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.domain.TestSession;
+import com.tastedna.session.persistence.SessionAnswerRepository;
 import com.tastedna.session.persistence.TestSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,9 @@ class TestSessionServiceTest {
 
     @Mock
     private TestSessionRepository sessionRepository;
+
+    @Mock
+    private SessionAnswerRepository answerRepository;
 
     @Mock
     private JsonMapper mapper;
@@ -360,4 +364,324 @@ class TestSessionServiceTest {
                 response.leaseUntil()
         );
     }
+
+    @Test
+    void saveAnswerRejectsStaleRevision() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.of(2026, 10, 19, 10, 0);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        session.advanceRevision(0L);
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "DEV_Q01",
+                0L,
+                tools.jackson.databind.json.JsonMapper
+                        .builder()
+                        .build()
+                        .readTree("{\"selectedOptionIds\":[\"A\"]}")
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.CONFLICT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "SESSION_REVISION_CONFLICT",
+                exception.getReason()
+        );
+
+        assertEquals(1L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+        verifyNoInteractions(questionRepository);
+    }
+
+    @Test
+    void saveAnswerCreatesAnswerAndAdvancesRevision() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.of(2026, 10, 19, 10, 0);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"DEV_Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"DEV_Q01"});
+
+        QuestionDefinition question = mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "DEV_Q01"
+                )
+        )).thenReturn(Optional.of(question));
+
+        when(question.getQuestionPayload())
+                .thenReturn("{\"kind\":\"DEV_PLACEHOLDER\"}");
+
+        TestDefinition definition = mock(TestDefinition.class);
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "DEV_Q01",
+                0L,
+                JsonMapper.builder()
+                        .build()
+                        .readTree("{\"selectedOptionIds\":[\"A\"]}")
+        );
+
+        SessionResponse response = service.saveAnswer(
+                "dev-member-001",
+                sessionId,
+                request
+        );
+
+        assertEquals(1L, response.revision());
+        assertEquals(1L, session.getRevision());
+        assertEquals("IN_PROGRESS", response.status());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(
+                com.tastedna.session.domain.SessionAnswer.class
+        );
+
+        verify(answerRepository).save(captor.capture());
+
+        var saved = captor.getValue();
+
+        assertEquals(sessionId.toString(), saved.getId().getSessionId());
+        assertEquals("DEV_Q01", saved.getId().getQuestionId());
+        assertEquals(1L, saved.getAnswerRevision());
+
+        assertEquals(
+                "{\"kind\":\"DEV_PLACEHOLDER\"}",
+                saved.getPresentedPayload()
+        );
+
+        assertEquals(
+                "{\"selectedOptionIds\":[\"A\"]}",
+                saved.getAnswerPayload()
+        );
+
+        assertNotNull(saved.getAnsweredAt());
+    }
+
+    @Test
+    void saveAnswerUpdatesExistingAnswerAndAdvancesRevision() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.now(java.time.Clock.systemUTC())
+                        .minusHours(1);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        session.advanceRevision(0L);
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"DEV_Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"DEV_Q01"});
+
+        QuestionDefinition question = mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "DEV_Q01"
+                )
+        )).thenReturn(Optional.of(question));
+
+        when(question.getQuestionPayload())
+                .thenReturn("{\"kind\":\"DEV_PLACEHOLDER\"}");
+
+        com.tastedna.session.domain.SessionAnswer existingAnswer =
+                new com.tastedna.session.domain.SessionAnswer(
+                        sessionId.toString(),
+                        "DEV_Q01",
+                        "{\"selectedOptionIds\":[\"A\"]}",
+                        "{\"kind\":\"DEV_PLACEHOLDER\"}",
+                        1L,
+                        now
+                );
+
+        when(answerRepository.findById(
+                new com.tastedna.session.domain.SessionAnswerId(
+                        sessionId.toString(),
+                        "DEV_Q01"
+                )
+        )).thenReturn(Optional.of(existingAnswer));
+
+        TestDefinition definition = mock(TestDefinition.class);
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "DEV_Q01",
+                1L,
+                JsonMapper.builder()
+                        .build()
+                        .readTree("{\"selectedOptionIds\":[\"B\"]}")
+        );
+
+        SessionResponse response = service.saveAnswer(
+                "dev-member-001",
+                sessionId,
+                request
+        );
+
+        assertEquals(2L, response.revision());
+        assertEquals(2L, session.getRevision());
+
+        assertEquals(2L, existingAnswer.getAnswerRevision());
+
+        assertEquals(
+                "{\"selectedOptionIds\":[\"B\"]}",
+                existingAnswer.getAnswerPayload()
+        );
+
+        assertEquals(
+                "{\"kind\":\"DEV_PLACEHOLDER\"}",
+                existingAnswer.getPresentedPayload()
+        );
+
+        assertTrue(existingAnswer.getAnsweredAt().isAfter(now));
+
+        verify(answerRepository, never()).save(any());
+    }
+
+    @Test
+    void saveAnswerRejectsQuestionNotInSession() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.now(java.time.Clock.systemUTC());
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"DEV_Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"DEV_Q01"});
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "DEV_Q99",
+                0L,
+                JsonMapper.builder()
+                        .build()
+                        .readTree("{\"selectedOptionIds\":[\"A\"]}")
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                422,
+                exception.getStatusCode().value()
+        );
+
+        assertEquals(
+                "QUESTION_NOT_IN_SESSION",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+        verifyNoInteractions(questionRepository);
+    }
+
 }

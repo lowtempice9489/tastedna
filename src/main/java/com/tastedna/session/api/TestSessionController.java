@@ -1,6 +1,6 @@
-
 package com.tastedna.session.api;
 
+import com.tastedna.session.api.dto.SaveAnswerRequest;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.api.dto.SessionResponse;
 import com.tastedna.session.api.dto.StartSessionRequest;
@@ -59,4 +59,20 @@ public class TestSessionController {
                 service.get(authentication.getName(), sessionId)
         );
     }
+
+    @PostMapping("/{sessionId}/answers")
+    public ResponseEntity<SessionResponse> saveAnswer(
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody SaveAnswerRequest request,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(
+                service.saveAnswer(
+                        authentication.getName(),
+                        sessionId,
+                        request
+                )
+        );
+    }
+
 }

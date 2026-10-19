@@ -1,4 +1,3 @@
-
 package com.tastedna.session.api;
 
 import com.tastedna.session.api.dto.ErrorResponse;

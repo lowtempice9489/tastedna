@@ -1,11 +1,15 @@
 package com.tastedna.session.application;
 
 import com.tastedna.definition.domain.QuestionDefinition;
+import com.tastedna.definition.domain.QuestionDefinitionId;
 import com.tastedna.definition.domain.TestDefinition;
 import com.tastedna.definition.persistence.QuestionDefinitionRepository;
 import com.tastedna.definition.persistence.TestDefinitionRepository;
 import com.tastedna.session.api.dto.*;
+import com.tastedna.session.domain.SessionAnswer;
+import com.tastedna.session.domain.SessionAnswerId;
 import com.tastedna.session.domain.TestSession;
+import com.tastedna.session.persistence.SessionAnswerRepository;
 import com.tastedna.session.persistence.TestSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -19,6 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +35,7 @@ public class TestSessionService {
     private final TestDefinitionRepository definitionRepository;
     private final QuestionDefinitionRepository questionRepository;
     private final TestSessionRepository sessionRepository;
+    private final SessionAnswerRepository answerRepository;
     private final JsonMapper mapper;
 
     @Transactional
@@ -203,6 +209,126 @@ public class TestSessionService {
                 );
 
         session.resume(dbNow, dbLease);
+
+        return toResponse(session, definition.getTestMode());
+    }
+
+    @Transactional
+    public SessionResponse saveAnswer(
+            String memberId,
+            UUID sessionId,
+            SaveAnswerRequest request) {
+
+        TestSession session = sessionRepository
+                .findByIdAndMemberIdForUpdate(
+                        sessionId.toString(),
+                        memberId
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "SESSION_NOT_FOUND"
+                ));
+
+        if (!"IN_PROGRESS".equals(session.getStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "SESSION_NOT_EDITABLE"
+            );
+        }
+
+        if (session.getRevision() != request.expectedRevision()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "SESSION_REVISION_CONFLICT"
+            );
+        }
+
+        String[] questionOrder;
+
+        try {
+            questionOrder = mapper.readValue(
+                    session.getQuestionOrder(),
+                    String[].class
+            );
+        } catch (Exception e) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "INVALID_SESSION_QUESTION_ORDER",
+                    e
+            );
+        }
+
+        if (!Arrays.asList(questionOrder)
+                .contains(request.questionId())) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "QUESTION_NOT_IN_SESSION"
+            );
+        }
+
+        QuestionDefinitionId questionDefinitionId =
+                new QuestionDefinitionId(
+                        session.getDefinitionId(),
+                        request.questionId()
+                );
+
+        QuestionDefinition question = questionRepository
+                .findById(questionDefinitionId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "QUESTION_DEFINITION_NOT_FOUND"
+                ));
+
+        SessionAnswerId answerId = new SessionAnswerId(
+                session.getSessionId(),
+                request.questionId()
+        );
+
+        String answerPayload =
+                request.answerPayload().toString();
+
+        String presentedPayload =
+                question.getQuestionPayload();
+
+        Instant now = Instant.now();
+
+        LocalDateTime dbNow =
+                LocalDateTime.ofInstant(now, ZoneOffset.UTC);
+
+        session.advanceRevision(request.expectedRevision());
+
+        long newRevision = session.getRevision();
+
+        Optional<SessionAnswer> existingAnswer =
+                answerRepository.findById(answerId);
+
+        if (existingAnswer.isPresent()) {
+            existingAnswer.get().update(
+                    answerPayload,
+                    presentedPayload,
+                    newRevision,
+                    dbNow
+            );
+        } else {
+            SessionAnswer answer = new SessionAnswer(
+                    session.getSessionId(),
+                    request.questionId(),
+                    answerPayload,
+                    presentedPayload,
+                    newRevision,
+                    dbNow
+            );
+
+            answerRepository.save(answer);
+        }
+
+        TestDefinition definition = definitionRepository
+                .findById(session.getDefinitionId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "SESSION_DEFINITION_NOT_FOUND"
+                ));
 
         return toResponse(session, definition.getTestMode());
     }

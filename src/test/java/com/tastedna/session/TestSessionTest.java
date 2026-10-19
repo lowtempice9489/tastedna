@@ -71,4 +71,65 @@ class TestSessionTest {
         assertEquals(originalLastSeen, session.getLastSeenAt());
         assertEquals(originalLease, session.getLeaseUntil());
     }
+
+    @Test
+    void advanceRevisionIncreasesRevision() {
+
+        TestSession session = newSession();
+
+        assertEquals(0L, session.getRevision());
+
+        session.advanceRevision(0L);
+
+        assertEquals(1L, session.getRevision());
+
+        session.advanceRevision(1L);
+
+        assertEquals(2L, session.getRevision());
+    }
+
+    @Test
+    void advanceRevisionRejectsStaleRevision() {
+
+        TestSession session = newSession();
+
+        session.advanceRevision(0L);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> session.advanceRevision(0L)
+        );
+
+        assertEquals(
+                "SESSION_REVISION_CONFLICT",
+                exception.getMessage()
+        );
+
+        assertEquals(1L, session.getRevision());
+    }
+
+    @Test
+    void advanceRevisionRejectsNonEditableSession() {
+
+        TestSession session = newSession();
+
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                session,
+                "status",
+                "SUBMITTED"
+        );
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> session.advanceRevision(0L)
+        );
+
+        assertEquals(
+                "SESSION_NOT_EDITABLE",
+                exception.getMessage()
+        );
+
+        assertEquals(0L, session.getRevision());
+    }
+
 }
