@@ -168,7 +168,7 @@ public class TestSessionService {
             UUID sessionId) {
 
         TestSession session = sessionRepository
-                .findBySessionIdAndMallMemberId(
+                .findByIdAndMemberIdForUpdate(
                         sessionId.toString(),
                         memberId
                 )

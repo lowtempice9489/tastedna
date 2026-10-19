@@ -330,7 +330,7 @@ class TestSessionServiceTest {
 
         TestDefinition definition = mock(TestDefinition.class);
 
-        when(sessionRepository.findBySessionIdAndMallMemberId(
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
                 sessionId.toString(),
                 "dev-member-001"
         )).thenReturn(Optional.of(session));
