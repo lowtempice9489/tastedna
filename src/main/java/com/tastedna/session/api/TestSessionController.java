@@ -1,5 +1,7 @@
 package com.tastedna.session.api;
 
+import com.tastedna.definition.api.dto.QuestionListResponse;
+import com.tastedna.definition.api.dto.QuestionResponse;
 import com.tastedna.session.api.dto.SaveAnswerRequest;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.api.dto.SessionResponse;
@@ -72,6 +74,30 @@ public class TestSessionController {
                         sessionId,
                         request
                 )
+        );
+    }
+
+    @GetMapping("/{sessionId}/questions/{questionId}")
+    public QuestionResponse getQuestion(
+            Authentication authentication,
+            @PathVariable UUID sessionId,
+            @PathVariable String questionId
+    ) {
+        return service.getQuestion(
+                authentication.getName(),
+                sessionId,
+                questionId
+        );
+    }
+
+    @GetMapping("/{sessionId}/questions")
+    public QuestionListResponse getQuestions(
+            Authentication authentication,
+            @PathVariable UUID sessionId
+    ) {
+        return service.getQuestions(
+                authentication.getName(),
+                sessionId
         );
     }
 

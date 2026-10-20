@@ -26,4 +26,17 @@ public class TestDefinition {
 
     @Column(name = "active", nullable = false)
     private boolean active;
+
+    @Column(name = "version_code", nullable = false, length = 40)
+    private String versionCode;
+
+    @Column(name = "scoring_version", nullable = false, length = 40)
+    private String scoringVersion;
+
+    @Column(name = "raw_schema_version", nullable = false, length = 40)
+    private String rawSchemaVersion;
+
+    @Column(name = "equivalence_version", length = 40)
+    private String equivalenceVersion;
+
 }

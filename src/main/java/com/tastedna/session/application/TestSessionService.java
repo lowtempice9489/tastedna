@@ -1,5 +1,7 @@
 package com.tastedna.session.application;
 
+import com.tastedna.definition.api.dto.QuestionListResponse;
+import com.tastedna.definition.api.dto.QuestionResponse;
 import com.tastedna.definition.domain.QuestionDefinition;
 import com.tastedna.definition.domain.QuestionDefinitionId;
 import com.tastedna.definition.domain.TestDefinition;
@@ -23,10 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -331,6 +330,140 @@ public class TestSessionService {
                 ));
 
         return toResponse(session, definition.getTestMode());
+    }
+
+    @Transactional(readOnly = true)
+    public QuestionResponse getQuestion(
+            String memberId,
+            UUID sessionId,
+            String questionId) {
+
+        TestSession session = sessionRepository
+                .findBySessionIdAndMallMemberId(
+                        sessionId.toString(),
+                        memberId
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "SESSION_NOT_FOUND"
+                ));
+
+        String[] questionOrder;
+
+        try {
+            questionOrder = mapper.readValue(
+                    session.getQuestionOrder(),
+                    String[].class
+            );
+        } catch (Exception e) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "INVALID_SESSION_QUESTION_ORDER",
+                    e
+            );
+        }
+
+        int questionIndex = Arrays.asList(questionOrder)
+                .indexOf(questionId);
+
+        if (questionIndex < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "QUESTION_NOT_IN_SESSION"
+            );
+        }
+
+        QuestionDefinition question = questionRepository
+                .findByIdDefinitionIdAndIdQuestionId(
+                        session.getDefinitionId(),
+                        questionId
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "QUESTION_DEFINITION_NOT_FOUND"
+                ));
+
+        try {
+            return new QuestionResponse(
+                    questionId,
+                    (short) (questionIndex + 1),
+                    question.isRequired(),
+                    mapper.readTree(question.getQuestionPayload())
+            );
+        } catch (Exception e) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "INVALID_QUESTION_PAYLOAD",
+                    e
+            );
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public QuestionListResponse getQuestions(
+            String memberId,
+            UUID sessionId
+    ) {
+        TestSession session = sessionRepository
+                .findBySessionIdAndMallMemberId(
+                        sessionId.toString(),
+                        memberId
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "SESSION_NOT_FOUND"
+                ));
+
+        String[] questionOrder;
+
+        try {
+            questionOrder = mapper.readValue(
+                    session.getQuestionOrder(),
+                    String[].class
+            );
+        } catch (Exception e) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "INVALID_SESSION_QUESTION_ORDER",
+                    e
+            );
+        }
+
+        List<QuestionResponse> questions = new ArrayList<>();
+
+        for (int i = 0; i < questionOrder.length; i++) {
+            String questionId = questionOrder[i];
+
+            QuestionDefinition question = questionRepository
+                    .findByIdDefinitionIdAndIdQuestionId(
+                            session.getDefinitionId(),
+                            questionId
+                    )
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.UNPROCESSABLE_CONTENT,
+                            "QUESTION_DEFINITION_NOT_FOUND"
+                    ));
+
+            try {
+                questions.add(new QuestionResponse(
+                        questionId,
+                        (short) (i + 1),
+                        question.isRequired(),
+                        mapper.readTree(question.getQuestionPayload())
+                ));
+            } catch (Exception e) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "INVALID_QUESTION_PAYLOAD",
+                        e
+                );
+            }
+        }
+
+        return new QuestionListResponse(
+                sessionId,
+                questions
+        );
     }
 
     private SessionResponse toResponse(

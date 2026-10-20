@@ -284,6 +284,34 @@ class TestSessionLockIntegrationTest {
 
             assertEquals(1L, response.revision());
 
+            SaveAnswerRequest unauthorizedRequest =
+                    new SaveAnswerRequest(
+                            "DEV_Q01",
+                            1L,
+                            jsonMapper.readTree(
+                                    "{\"selectedOptionIds\":[\"C\"]}"
+                            )
+                    );
+
+            var unauthorizedException = assertThrows(
+                    org.springframework.web.server.ResponseStatusException.class,
+                    () -> sessionService.saveAnswer(
+                            "another-mall-member",
+                            UUID.fromString(sessionId),
+                            unauthorizedRequest
+                    )
+            );
+
+            assertEquals(
+                    404,
+                    unauthorizedException.getStatusCode().value()
+            );
+
+            assertEquals(
+                    "SESSION_NOT_FOUND",
+                    unauthorizedException.getReason()
+            );
+
             Long storedSessionRevision =
                     jdbcTemplate.queryForObject(
                             """

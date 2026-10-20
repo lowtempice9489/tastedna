@@ -684,4 +684,419 @@ class TestSessionServiceTest {
         verifyNoInteractions(questionRepository);
     }
 
+    @Test
+    void saveAnswerRejectsSessionOwnedByAnotherMember() {
+
+        UUID sessionId = UUID.randomUUID();
+
+        String requestingMemberId = "mall-member-B";
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "DEV_Q01",
+                0L,
+                JsonMapper.builder()
+                        .build()
+                        .readTree("{\"selectedOptionIds\":[\"A\"]}")
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                requestingMemberId
+        )).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        requestingMemberId,
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.NOT_FOUND,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "SESSION_NOT_FOUND",
+                exception.getReason()
+        );
+
+        verify(sessionRepository).findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                requestingMemberId
+        );
+
+        verifyNoInteractions(answerRepository);
+        verifyNoInteractions(questionRepository);
+        verifyNoInteractions(definitionRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsSubmittedSession() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.of(2026, 10, 19, 10, 0);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                session,
+                "status",
+                "SUBMITTED"
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "DEV_Q01",
+                0L,
+                JsonMapper.builder()
+                        .build()
+                        .readTree("{\"selectedOptionIds\":[\"A\"]}")
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.CONFLICT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "SESSION_NOT_EDITABLE",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+        verifyNoInteractions(questionRepository);
+        verifyNoInteractions(definitionRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsMissingQuestionDefinition() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.now(java.time.Clock.systemUTC());
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"DEV_Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"DEV_Q01"});
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "DEV_Q01"
+                )
+        )).thenReturn(Optional.empty());
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "DEV_Q01",
+                0L,
+                JsonMapper.builder()
+                        .build()
+                        .readTree("{\"selectedOptionIds\":[\"A\"]}")
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                422,
+                exception.getStatusCode().value()
+        );
+
+        assertEquals(
+                "QUESTION_DEFINITION_NOT_FOUND",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+        verifyNoInteractions(definitionRepository);
+    }
+
+    @Test
+    void getQuestionRejectsSessionOwnedByAnotherMember() {
+
+        UUID sessionId = UUID.randomUUID();
+
+        String requestingMemberId = "another-mall-member";
+
+        when(sessionRepository.findBySessionIdAndMallMemberId(
+                sessionId.toString(),
+                requestingMemberId
+        )).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.getQuestion(
+                        requestingMemberId,
+                        sessionId,
+                        "DEV_Q01"
+                )
+        );
+
+        assertEquals(
+                HttpStatus.NOT_FOUND,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "SESSION_NOT_FOUND",
+                exception.getReason()
+        );
+
+        verify(sessionRepository).findBySessionIdAndMallMemberId(
+                sessionId.toString(),
+                requestingMemberId
+        );
+
+        verifyNoInteractions(questionRepository);
+        verifyNoInteractions(definitionRepository);
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void getQuestionReturnsQuestionInSessionOrder() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.of(2026, 10, 20, 9, 0);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q02\",\"DEV_Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findBySessionIdAndMallMemberId(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"DEV_Q02\",\"DEV_Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"DEV_Q02", "DEV_Q01"});
+
+        QuestionDefinition question = mock(QuestionDefinition.class);
+
+        when(questionRepository.findByIdDefinitionIdAndIdQuestionId(
+                definitionId.toString(),
+                "DEV_Q01"
+        )).thenReturn(Optional.of(question));
+
+        when(question.getQuestionPayload())
+                .thenReturn("{\"kind\":\"DEV_PLACEHOLDER\",\"label\":\"개발용 질문 01\"}");
+
+        when(mapper.readTree(question.getQuestionPayload()))
+                .thenReturn(
+                        JsonMapper.builder().build().readTree(
+                                "{\"kind\":\"DEV_PLACEHOLDER\",\"label\":\"개발용 질문 01\"}"
+                        )
+                );
+
+        var response = service.getQuestion(
+                "dev-member-001",
+                sessionId,
+                "DEV_Q01"
+        );
+
+        assertEquals("DEV_Q01", response.questionId());
+        assertEquals(2, response.displayOrder());
+
+        assertEquals(
+                "DEV_PLACEHOLDER",
+                response.questionPayload().get("kind").stringValue()
+        );
+
+        assertEquals(
+                "개발용 질문 01",
+                response.questionPayload().get("label").stringValue()
+        );
+    }
+
+    @Test
+    void getQuestionsReturnsQuestionsInSessionOrder() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.now(java.time.Clock.systemUTC());
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"DEV_Q02\",\"DEV_Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findBySessionIdAndMallMemberId(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"DEV_Q02\",\"DEV_Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"DEV_Q02", "DEV_Q01"});
+
+        QuestionDefinition question1 = mock(QuestionDefinition.class);
+        QuestionDefinition question2 = mock(QuestionDefinition.class);
+
+        when(questionRepository.findByIdDefinitionIdAndIdQuestionId(
+                definitionId.toString(),
+                "DEV_Q01"
+        )).thenReturn(Optional.of(question1));
+
+        when(questionRepository.findByIdDefinitionIdAndIdQuestionId(
+                definitionId.toString(),
+                "DEV_Q02"
+        )).thenReturn(Optional.of(question2));
+
+        String payload1 =
+                "{\"kind\":\"DEV_PLACEHOLDER\",\"label\":\"개발용 질문 01\"}";
+
+        String payload2 =
+                "{\"kind\":\"DEV_PLACEHOLDER\",\"label\":\"개발용 질문 02\"}";
+
+        when(question1.getQuestionPayload()).thenReturn(payload1);
+        when(question2.getQuestionPayload()).thenReturn(payload2);
+
+        when(mapper.readTree(payload1))
+                .thenReturn(JsonMapper.builder().build().readTree(payload1));
+
+        when(mapper.readTree(payload2))
+                .thenReturn(JsonMapper.builder().build().readTree(payload2));
+
+        var response = service.getQuestions(
+                "dev-member-001",
+                sessionId
+        );
+
+        assertEquals(sessionId, response.sessionId());
+        assertEquals(2, response.questions().size());
+
+        assertEquals(
+                "DEV_Q02",
+                response.questions().get(0).questionId()
+        );
+
+        assertEquals(
+                1,
+                response.questions().get(0).displayOrder()
+        );
+
+        assertEquals(
+                "DEV_Q01",
+                response.questions().get(1).questionId()
+        );
+
+        assertEquals(
+                2,
+                response.questions().get(1).displayOrder()
+        );
+    }
+
+    @Test
+    void getQuestionsRejectsSessionOwnedByAnotherMember() {
+
+        UUID sessionId = UUID.randomUUID();
+
+        String requestingMemberId = "another-mall-member";
+
+        when(sessionRepository.findBySessionIdAndMallMemberId(
+                sessionId.toString(),
+                requestingMemberId
+        )).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.getQuestions(
+                        requestingMemberId,
+                        sessionId
+                )
+        );
+
+        assertEquals(
+                HttpStatus.NOT_FOUND,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "SESSION_NOT_FOUND",
+                exception.getReason()
+        );
+
+        verify(sessionRepository).findBySessionIdAndMallMemberId(
+                sessionId.toString(),
+                requestingMemberId
+        );
+
+        verifyNoInteractions(questionRepository);
+        verifyNoInteractions(definitionRepository);
+        verifyNoInteractions(answerRepository);
+    }
+
 }

@@ -18,4 +18,14 @@ public record SaveAnswerRequest(
         JsonNode answerPayload
 
 ) {
+
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        @jakarta.validation.constraints.AssertTrue(
+                message = "answerPayload must not be JSON null"
+        )
+        public boolean isAnswerPayloadValid() {
+                return answerPayload != null
+                        && !answerPayload.isNull();
+        }
+
 }
