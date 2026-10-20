@@ -1,5 +1,7 @@
 package com.tastedna.session.api.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -19,13 +21,10 @@ public record SaveAnswerRequest(
 
 ) {
 
-        @com.fasterxml.jackson.annotation.JsonIgnore
-        @jakarta.validation.constraints.AssertTrue(
-                message = "answerPayload must not be JSON null"
-        )
+        @JsonIgnore
+        @AssertTrue(message = "answerPayload must not be JSON null")
         public boolean isAnswerPayloadValid() {
                 return answerPayload != null
                         && !answerPayload.isNull();
         }
-
 }
