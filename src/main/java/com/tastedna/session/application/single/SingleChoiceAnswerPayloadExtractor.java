@@ -1,4 +1,4 @@
-package com.tastedna.session.application;
+package com.tastedna.session.application.single;
 
 import tools.jackson.databind.JsonNode;
 

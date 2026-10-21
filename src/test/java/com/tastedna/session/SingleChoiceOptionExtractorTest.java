@@ -1,6 +1,6 @@
 package com.tastedna.session;
 
-import com.tastedna.session.application.SingleChoiceOptionExtractor;
+import com.tastedna.session.application.single.SingleChoiceOptionExtractor;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 

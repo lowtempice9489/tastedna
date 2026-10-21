@@ -8,6 +8,7 @@ import com.tastedna.definition.domain.TestDefinition;
 import com.tastedna.definition.persistence.QuestionDefinitionRepository;
 import com.tastedna.definition.persistence.TestDefinitionRepository;
 import com.tastedna.session.api.dto.*;
+import com.tastedna.session.application.single.SingleChoiceAnswerValidator;
 import com.tastedna.session.domain.SessionAnswer;
 import com.tastedna.session.domain.SessionAnswerId;
 import com.tastedna.session.domain.TestSession;

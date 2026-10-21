@@ -1,6 +1,6 @@
 package com.tastedna.session;
 
-import com.tastedna.session.application.SingleChoiceSelectionValidator;
+import com.tastedna.session.application.single.SingleChoiceSelectionValidator;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;

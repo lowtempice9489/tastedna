@@ -1,6 +1,6 @@
 package com.tastedna.session;
 
-import com.tastedna.session.application.SingleChoiceAnswerValidator;
+import com.tastedna.session.application.single.SingleChoiceAnswerValidator;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;

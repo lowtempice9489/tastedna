@@ -1294,4 +1294,984 @@ class TestSessionServiceTest {
         verifyNoInteractions(answerRepository);
     }
 
+    @Test
+    void saveAnswerAcceptsValidSingleChoiceOptionAndSaves() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "kind": "SINGLE_CHOICE",
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"},
+            {"id": "B", "label": "선택지 B"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        TestDefinition definition =
+                mock(TestDefinition.class);
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                {"selectedOptionId":"A"}
+                """)
+        );
+
+        SessionResponse response = service.saveAnswer(
+                "dev-member-001",
+                sessionId,
+                request
+        );
+
+        assertEquals(1L, response.revision());
+        assertEquals(1L, session.getRevision());
+        assertEquals("IN_PROGRESS", response.status());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(
+                com.tastedna.session.domain.SessionAnswer.class
+        );
+
+        verify(answerRepository).save(captor.capture());
+
+        var saved = captor.getValue();
+
+        assertEquals(
+                sessionId.toString(),
+                saved.getId().getSessionId()
+        );
+
+        assertEquals(
+                "Q10",
+                saved.getId().getQuestionId()
+        );
+
+        assertEquals(1L, saved.getAnswerRevision());
+
+        assertEquals(
+                "{\"selectedOptionId\":\"A\"}",
+                saved.getAnswerPayload()
+        );
+
+        assertEquals(
+                questionPayload,
+                saved.getPresentedPayload()
+        );
+
+        assertNotNull(saved.getAnsweredAt());
+    }
+
+    @Test
+    void saveAnswerUpdatesValidSingleChoiceAnswer() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.now(java.time.Clock.systemUTC())
+                        .minusHours(1);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        session.advanceRevision(0L);
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "kind": "SINGLE_CHOICE",
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"},
+            {"id": "B", "label": "선택지 B"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        var existingAnswer =
+                new com.tastedna.session.domain.SessionAnswer(
+                        sessionId.toString(),
+                        "Q10",
+                        "{\"selectedOptionId\":\"A\"}",
+                        questionPayload,
+                        1L,
+                        now
+                );
+
+        when(answerRepository.findById(
+                new com.tastedna.session.domain.SessionAnswerId(
+                        sessionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(existingAnswer));
+
+        TestDefinition definition =
+                mock(TestDefinition.class);
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                1L,
+                realMapper.readTree("""
+                {"selectedOptionId":"B"}
+                """)
+        );
+
+        SessionResponse response = service.saveAnswer(
+                "dev-member-001",
+                sessionId,
+                request
+        );
+
+        assertEquals(2L, response.revision());
+        assertEquals(2L, session.getRevision());
+
+        assertEquals(2L, existingAnswer.getAnswerRevision());
+
+        assertEquals(
+                "{\"selectedOptionId\":\"B\"}",
+                existingAnswer.getAnswerPayload()
+        );
+
+        assertEquals(
+                questionPayload,
+                existingAnswer.getPresentedPayload()
+        );
+
+        assertTrue(existingAnswer.getAnsweredAt().isAfter(now));
+
+        verify(answerRepository, never()).save(any());
+    }
+
+    @Test
+    void saveAnswerRejectsInvalidSingleChoiceUpdateWithoutChangingExistingAnswer() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.now(java.time.Clock.systemUTC())
+                        .minusHours(1);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        session.advanceRevision(0L);
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "kind": "SINGLE_CHOICE",
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"},
+            {"id": "B", "label": "선택지 B"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        var existingAnswer =
+                new com.tastedna.session.domain.SessionAnswer(
+                        sessionId.toString(),
+                        "Q10",
+                        "{\"selectedOptionId\":\"A\"}",
+                        questionPayload,
+                        1L,
+                        now
+                );
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                1L,
+                realMapper.readTree("""
+                {"selectedOptionId":"G"}
+                """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "INVALID_OPTION_SELECTION",
+                exception.getReason()
+        );
+
+        assertEquals(1L, session.getRevision());
+
+        assertEquals(1L, existingAnswer.getAnswerRevision());
+
+        assertEquals(
+                "{\"selectedOptionId\":\"A\"}",
+                existingAnswer.getAnswerPayload()
+        );
+
+        assertEquals(
+                questionPayload,
+                existingAnswer.getPresentedPayload()
+        );
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsUnsupportedQuestionKindWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "kind": "UNKNOWN_KIND",
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                {"selectedOptionId":"A"}
+                """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "UNSUPPORTED_QUESTION_KIND",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsMissingSelectedOptionIdWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "kind": "SINGLE_CHOICE",
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"},
+            {"id": "B", "label": "선택지 B"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                {}
+                """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "INVALID_ANSWER_PAYLOAD",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsBlankSelectedOptionIdWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "kind": "SINGLE_CHOICE",
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"},
+            {"id": "B", "label": "선택지 B"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                {"selectedOptionId":""}
+                """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "INVALID_ANSWER_PAYLOAD",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsNumericSelectedOptionIdWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "kind": "SINGLE_CHOICE",
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"},
+            {"id": "B", "label": "선택지 B"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                {"selectedOptionId":123}
+                """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "INVALID_ANSWER_PAYLOAD",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsMalformedQuestionDefinitionWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {"kind":"SINGLE_CHOICE","options":[
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        // 실제 JSON 파서로 잘못된 질문 정의를 검증한다.
+        JsonMapper realMapper = JsonMapper.builder().build();
+
+        // 서비스의 Mock mapper가 실제 파싱 오류를 재현하도록 설정한다.
+        when(mapper.readTree(questionPayload))
+                .thenAnswer(invocation ->
+                        realMapper.readTree(questionPayload)
+                );
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                {"selectedOptionId":"A"}
+                """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "INVALID_QUESTION_DEFINITION",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsMissingQuestionKindWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                {"selectedOptionId":"A"}
+                """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "UNSUPPORTED_QUESTION_KIND",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsNonStringQuestionKindWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+        {
+          "kind": 123,
+          "prompt": "검증용 질문",
+          "options": [
+            {"id": "A", "label": "선택지 A"}
+          ]
+        }
+        """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper =
+                JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                {"selectedOptionId":"A"}
+                """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "UNSUPPORTED_QUESTION_KIND",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
 }
