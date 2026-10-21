@@ -8,6 +8,7 @@ import com.tastedna.definition.domain.TestDefinition;
 import com.tastedna.definition.persistence.QuestionDefinitionRepository;
 import com.tastedna.definition.persistence.TestDefinitionRepository;
 import com.tastedna.session.api.dto.*;
+import com.tastedna.session.application.multi.MultiChoiceAnswerValidator;
 import com.tastedna.session.application.single.SingleChoiceAnswerValidator;
 import com.tastedna.session.domain.SessionAnswer;
 import com.tastedna.session.domain.SessionAnswerId;
@@ -307,6 +308,21 @@ public class TestSessionService {
         if ("SINGLE_CHOICE".equals(questionKind)) {
             try {
                 SingleChoiceAnswerValidator.validate(
+                        question.getQuestionPayload(),
+                        request.answerPayload(),
+                        mapper
+                );
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        e.getMessage(),
+                        e
+                );
+            }
+
+        } else if ("MULTIPLE_CHOICE".equals(questionKind)) {
+            try {
+                MultiChoiceAnswerValidator.validate(
                         question.getQuestionPayload(),
                         request.answerPayload(),
                         mapper

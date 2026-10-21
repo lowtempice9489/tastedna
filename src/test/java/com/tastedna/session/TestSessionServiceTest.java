@@ -2274,4 +2274,425 @@ class TestSessionServiceTest {
         verifyNoInteractions(answerRepository);
     }
 
+    @Test
+    void saveAnswerAcceptsValidMultipleChoiceOptionAndSaves() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q01"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q01"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+            {
+              "kind": "MULTIPLE_CHOICE",
+              "maxSelections": 2,
+              "options": [
+                {"id": "A", "label": "스타일 A"},
+                {"id": "B", "label": "스타일 B"},
+                {"id": "C", "label": "스타일 C"}
+              ]
+            }
+            """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper = JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        // 복수 선택 검증에서도 사용하는 동일한 JSON 파싱 설정
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        TestDefinition definition =
+                mock(TestDefinition.class);
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q01",
+                0L,
+                realMapper.readTree("""
+                    {"selectedOptionIds":["A","C"]}
+                    """)
+        );
+
+        SessionResponse response = service.saveAnswer(
+                "dev-member-001",
+                sessionId,
+                request
+        );
+
+        assertEquals(1L, response.revision());
+        assertEquals(1L, session.getRevision());
+        assertEquals("IN_PROGRESS", response.status());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(
+                com.tastedna.session.domain.SessionAnswer.class
+        );
+
+        verify(answerRepository).save(captor.capture());
+
+        var saved = captor.getValue();
+
+        assertEquals(
+                sessionId.toString(),
+                saved.getId().getSessionId()
+        );
+        assertEquals("Q01", saved.getId().getQuestionId());
+        assertEquals(1L, saved.getAnswerRevision());
+
+        assertEquals(
+                "{\"selectedOptionIds\":[\"A\",\"C\"]}",
+                saved.getAnswerPayload()
+        );
+
+        assertEquals(
+                questionPayload,
+                saved.getPresentedPayload()
+        );
+
+        assertNotNull(saved.getAnsweredAt());
+    }
+
+    @Test
+    void saveAnswerRejectsTooManyMultipleChoiceOptions() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q01"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q01"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+            {
+              "kind": "MULTIPLE_CHOICE",
+              "maxSelections": 2,
+              "options": [
+                {"id": "A", "label": "스타일 A"},
+                {"id": "B", "label": "스타일 B"},
+                {"id": "C", "label": "스타일 C"}
+              ]
+            }
+            """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper = JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q01",
+                0L,
+                realMapper.readTree("""
+                    {"selectedOptionIds":["A","B","C"]}
+                    """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "TOO_MANY_OPTIONS_SELECTED",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsUnknownMultipleChoiceOption() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q01"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q01"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+            {
+              "kind": "MULTIPLE_CHOICE",
+              "maxSelections": 2,
+              "options": [
+                {"id": "A", "label": "스타일 A"},
+                {"id": "B", "label": "스타일 B"},
+                {"id": "C", "label": "스타일 C"}
+              ]
+            }
+            """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper = JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q01",
+                0L,
+                realMapper.readTree("""
+                    {"selectedOptionIds":["A","G"]}
+                    """)
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "INVALID_OPTION_SELECTION",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerUpdatesValidMultipleChoiceAnswer() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now =
+                LocalDateTime.now(java.time.Clock.systemUTC())
+                        .minusHours(1);
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q01\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        session.advanceRevision(0L);
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q01\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q01"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q01"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+            {
+              "kind": "MULTIPLE_CHOICE",
+              "maxSelections": 2,
+              "options": [
+                {"id": "A", "label": "스타일 A"},
+                {"id": "B", "label": "스타일 B"},
+                {"id": "C", "label": "스타일 C"}
+              ]
+            }
+            """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper = JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        var existingAnswer =
+                new com.tastedna.session.domain.SessionAnswer(
+                        sessionId.toString(),
+                        "Q01",
+                        "{\"selectedOptionIds\":[\"A\",\"B\"]}",
+                        questionPayload,
+                        1L,
+                        now
+                );
+
+        when(answerRepository.findById(
+                new com.tastedna.session.domain.SessionAnswerId(
+                        sessionId.toString(),
+                        "Q01"
+                )
+        )).thenReturn(Optional.of(existingAnswer));
+
+        TestDefinition definition =
+                mock(TestDefinition.class);
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q01",
+                1L,
+                realMapper.readTree("""
+                    {"selectedOptionIds":["B","C"]}
+                    """)
+        );
+
+        SessionResponse response = service.saveAnswer(
+                "dev-member-001",
+                sessionId,
+                request
+        );
+
+        assertEquals(2L, response.revision());
+        assertEquals(2L, session.getRevision());
+
+        assertEquals(2L, existingAnswer.getAnswerRevision());
+
+        assertEquals(
+                "{\"selectedOptionIds\":[\"B\",\"C\"]}",
+                existingAnswer.getAnswerPayload()
+        );
+
+        assertEquals(
+                questionPayload,
+                existingAnswer.getPresentedPayload()
+        );
+
+        assertTrue(existingAnswer.getAnsweredAt().isAfter(now));
+
+        verify(answerRepository, never()).save(any());
+    }
+
 }
