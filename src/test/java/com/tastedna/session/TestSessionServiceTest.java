@@ -466,6 +466,13 @@ class TestSessionServiceTest {
         when(question.getQuestionPayload())
                 .thenReturn("{\"kind\":\"DEV_PLACEHOLDER\"}");
 
+        when(mapper.readTree("{\"kind\":\"DEV_PLACEHOLDER\"}"))
+                .thenReturn(
+                        JsonMapper.builder()
+                                .build()
+                                .readTree("{\"kind\":\"DEV_PLACEHOLDER\"}")
+                );
+
         TestDefinition definition = mock(TestDefinition.class);
 
         when(definitionRepository.findById(
@@ -561,6 +568,13 @@ class TestSessionServiceTest {
 
         when(question.getQuestionPayload())
                 .thenReturn("{\"kind\":\"DEV_PLACEHOLDER\"}");
+
+        when(mapper.readTree("{\"kind\":\"DEV_PLACEHOLDER\"}"))
+                .thenReturn(
+                        JsonMapper.builder()
+                                .build()
+                                .readTree("{\"kind\":\"DEV_PLACEHOLDER\"}")
+                );
 
         com.tastedna.session.domain.SessionAnswer existingAnswer =
                 new com.tastedna.session.domain.SessionAnswer(
@@ -1096,6 +1110,187 @@ class TestSessionServiceTest {
 
         verifyNoInteractions(questionRepository);
         verifyNoInteractions(definitionRepository);
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsUnknownSingleChoiceOptionWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+            {
+              "kind": "SINGLE_CHOICE",
+              "prompt": "검증용 질문",
+              "options": [
+                {"id": "A", "label": "선택지 A"},
+                {"id": "B", "label": "선택지 B"}
+              ]
+            }
+            """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper = JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                    {"selectedOptionId":"G"}
+                    """)
+        );
+
+        var exception = assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "INVALID_OPTION_SELECTION",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
+        verifyNoInteractions(answerRepository);
+    }
+
+    @Test
+    void saveAnswerRejectsExtraAnswerFieldWithoutSaving() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q10\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q10\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q10"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q10"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+            {
+              "kind": "SINGLE_CHOICE",
+              "prompt": "검증용 질문",
+              "options": [
+                {"id": "A", "label": "선택지 A"},
+                {"id": "B", "label": "선택지 B"}
+              ]
+            }
+            """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper = JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q10",
+                0L,
+                realMapper.readTree("""
+                    {
+                      "selectedOptionId": "A",
+                      "score": 100
+                    }
+                    """)
+        );
+
+        var exception = assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                () -> service.saveAnswer(
+                        "dev-member-001",
+                        sessionId,
+                        request
+                )
+        );
+
+        assertEquals(
+                org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "INVALID_ANSWER_PAYLOAD",
+                exception.getReason()
+        );
+
+        assertEquals(0L, session.getRevision());
+
         verifyNoInteractions(answerRepository);
     }
 

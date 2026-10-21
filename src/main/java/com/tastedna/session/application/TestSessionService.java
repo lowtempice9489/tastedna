@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
@@ -278,6 +279,50 @@ public class TestSessionService {
                         HttpStatus.UNPROCESSABLE_CONTENT,
                         "QUESTION_DEFINITION_NOT_FOUND"
                 ));
+
+        JsonNode questionPayloadNode;
+
+        try {
+            questionPayloadNode = mapper.readTree(
+                    question.getQuestionPayload()
+            );
+        } catch (Exception e) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "INVALID_QUESTION_DEFINITION",
+                    e
+            );
+        }
+
+        JsonNode kindNode = questionPayloadNode == null
+                ? null
+                : questionPayloadNode.get("kind");
+
+        String questionKind = kindNode != null
+                && kindNode.isString()
+                ? kindNode.stringValue()
+                : null;
+
+        if ("SINGLE_CHOICE".equals(questionKind)) {
+            try {
+                SingleChoiceAnswerValidator.validate(
+                        question.getQuestionPayload(),
+                        request.answerPayload(),
+                        mapper
+                );
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        e.getMessage(),
+                        e
+                );
+            }
+        } else if (!"DEV_PLACEHOLDER".equals(questionKind)) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "UNSUPPORTED_QUESTION_KIND"
+            );
+        }
 
         SessionAnswerId answerId = new SessionAnswerId(
                 session.getSessionId(),
