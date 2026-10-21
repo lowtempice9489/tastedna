@@ -8,6 +8,7 @@ import com.tastedna.definition.domain.TestDefinition;
 import com.tastedna.definition.persistence.QuestionDefinitionRepository;
 import com.tastedna.definition.persistence.TestDefinitionRepository;
 import com.tastedna.session.api.dto.*;
+import com.tastedna.session.application.comparison.ComparisonAnswerValidator;
 import com.tastedna.session.application.multi.MultiChoiceAnswerValidator;
 import com.tastedna.session.application.single.SingleChoiceAnswerValidator;
 import com.tastedna.session.domain.SessionAnswer;
@@ -334,7 +335,23 @@ public class TestSessionService {
                         e
                 );
             }
-        } else if (!"DEV_PLACEHOLDER".equals(questionKind)) {
+
+        } else if ("COMPARISON".equals(questionKind)) {
+            try {
+                ComparisonAnswerValidator.validate(
+                        question.getQuestionPayload(),
+                        request.answerPayload(),
+                        mapper
+                );
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        e.getMessage(),
+                        e
+                );
+            }
+
+        }else if (!"DEV_PLACEHOLDER".equals(questionKind)) {
             throw new ResponseStatusException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
                     "UNSUPPORTED_QUESTION_KIND"

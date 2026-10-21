@@ -2695,4 +2695,125 @@ class TestSessionServiceTest {
         verify(answerRepository, never()).save(any());
     }
 
+    @Test
+    void saveAnswerAcceptsValidComparisonAndSaves() {
+
+        UUID sessionId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        TestSession session = new TestSession(
+                sessionId.toString(),
+                "dev-member-001",
+                definitionId.toString(),
+                "MENS",
+                "[\"Q08\"]",
+                now,
+                now.plusMinutes(2)
+        );
+
+        when(sessionRepository.findByIdAndMemberIdForUpdate(
+                sessionId.toString(),
+                "dev-member-001"
+        )).thenReturn(Optional.of(session));
+
+        when(mapper.readValue(
+                "[\"Q08\"]",
+                String[].class
+        )).thenReturn(new String[]{"Q08"});
+
+        QuestionDefinition question =
+                mock(QuestionDefinition.class);
+
+        when(questionRepository.findById(
+                new QuestionDefinitionId(
+                        definitionId.toString(),
+                        "Q08"
+                )
+        )).thenReturn(Optional.of(question));
+
+        String questionPayload = """
+            {
+              "kind": "COMPARISON",
+              "comparisons": [
+                {
+                  "id": "C1",
+                  "options": [{"id": "A"}, {"id": "B"}]
+                },
+                {
+                  "id": "C2",
+                  "options": [{"id": "A"}, {"id": "B"}]
+                },
+                {
+                  "id": "C3",
+                  "options": [{"id": "A"}, {"id": "B"}]
+                }
+              ]
+            }
+            """;
+
+        when(question.getQuestionPayload())
+                .thenReturn(questionPayload);
+
+        JsonMapper realMapper = JsonMapper.builder().build();
+
+        when(mapper.readTree(questionPayload))
+                .thenReturn(realMapper.readTree(questionPayload));
+
+        TestDefinition definition =
+                mock(TestDefinition.class);
+
+        when(definitionRepository.findById(
+                definitionId.toString()
+        )).thenReturn(Optional.of(definition));
+
+        when(definition.getTestMode())
+                .thenReturn("SIMPLE");
+
+        SaveAnswerRequest request = new SaveAnswerRequest(
+                "Q08",
+                0L,
+                realMapper.readTree("""
+                    {
+                      "selections": [
+                        {"comparisonId": "C1", "selectedOptionId": "A"},
+                        {"comparisonId": "C2", "selectedOptionId": "B"},
+                        {"comparisonId": "C3", "selectedOptionId": "A"}
+                      ]
+                    }
+                    """)
+        );
+
+        SessionResponse response = service.saveAnswer(
+                "dev-member-001",
+                sessionId,
+                request
+        );
+
+        assertEquals(1L, response.revision());
+        assertEquals(1L, session.getRevision());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(
+                com.tastedna.session.domain.SessionAnswer.class
+        );
+
+        verify(answerRepository).save(captor.capture());
+
+        var saved = captor.getValue();
+
+        assertEquals("Q08", saved.getId().getQuestionId());
+        assertEquals(1L, saved.getAnswerRevision());
+        assertEquals(questionPayload, saved.getPresentedPayload());
+
+        var storedAnswer = realMapper.readTree(
+                saved.getAnswerPayload()
+        );
+
+        assertEquals(
+                request.answerPayload(),
+                storedAnswer
+        );
+    }
+
 }
