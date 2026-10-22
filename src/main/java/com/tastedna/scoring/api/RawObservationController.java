@@ -4,6 +4,7 @@ import com.tastedna.scoring.application.RawObservationAggregator;
 import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.session.application.TestSessionService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +20,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/sessions")
 @RequiredArgsConstructor
+@Profile("dev")
 public class RawObservationController {
 
     private final TestSessionService sessionService;
@@ -47,7 +49,8 @@ public class RawObservationController {
 
             if ("OBSERVATION_KIND_NOT_SUPPORTED".equals(code)
                     || "SCORING_RULE_NOT_FOUND".equals(code)
-                    || "OBSERVATION_RULE_NOT_FOUND".equals(code)) {
+                    || "OBSERVATION_RULE_NOT_FOUND".equals(code)
+                    || "RAW_OBSERVATION_NOT_READY".equals(code)) {
 
                 throw new ResponseStatusException(
                         HttpStatus.UNPROCESSABLE_CONTENT,

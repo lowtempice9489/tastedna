@@ -9,6 +9,8 @@ import java.util.List;
 public interface SessionAnswerRepository
         extends JpaRepository<SessionAnswer, SessionAnswerId> {
 
-    List<SessionAnswer> findByIdSessionId(String sessionId);
+    List<SessionAnswer> findByIdSessionIdOrderByIdQuestionIdAsc(
+            String sessionId
+    );
 
 }
