@@ -38,6 +38,8 @@ public class SessionExceptionHandler {
             case "SESSION_DEFINITION_NOT_FOUND" ->
                     "테스트 정의 정보를 찾을 수 없습니다.";
 
+            case "RAW_OBSERVATION_NOT_READY" ->
+                    "이 세션에는 아직 분석을 지원하지 않는 질문이나 관측 규칙이 포함되어 있습니다.";
             default ->
                     "요청을 처리할 수 없습니다.";
         };

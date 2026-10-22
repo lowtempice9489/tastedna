@@ -1,0 +1,23 @@
+{
+  "questionId": "Q01",
+  "definitionVersion": "SIMPLE-V1-DRAFT",
+  "status": "DRAFT",
+  "observationType": "DIRECT_COLOR_PREFERENCE",
+  "rules": [
+    {"optionId": "A", "observedValue": "블랙"},
+    {"optionId": "B", "observedValue": "화이트·아이보리"},
+    {"optionId": "C", "observedValue": "그레이·실버"},
+    {"optionId": "D", "observedValue": "베이지·크림"},
+    {"optionId": "E", "observedValue": "브라운·카멜"},
+    {"optionId": "F", "observedValue": "네이비"},
+    {"optionId": "G", "observedValue": "블루"},
+    {"optionId": "H", "observedValue": "그린·올리브"},
+    {"optionId": "I", "observedValue": "레드·버건디"},
+    {"optionId": "J", "observedValue": "핑크"},
+    {"optionId": "K", "observedValue": "퍼플"},
+    {"optionId": "L", "observedValue": "옐로·머스터드"},
+    {"optionId": "M", "observedValue": "오렌지·코랄"},
+    {"optionId": "N", "observedValue": "파스텔 계열"},
+    {"optionId": "O", "observedValue": "선명하고 밝은 색 계열"}
+  ]
+}
