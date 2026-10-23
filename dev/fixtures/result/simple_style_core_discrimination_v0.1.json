@@ -1,0 +1,39 @@
+{
+  "version": "0.1",
+  "definitionId": "22222222-2222-4222-8222-222222222222",
+  "status": "DISCRIMINATION_NOT_VERIFIED",
+  "candidatePair": ["R01", "R02"],
+  "candidateNames": {
+    "R01": "Minimal",
+    "R02": "Modern"
+  },
+  "verifiedEvidence": {
+    "Q02": {
+      "R01": "EXPLICIT_POSITIVE",
+      "R02": "EXPLICIT_POSITIVE"
+    }
+  },
+  "potentialSupportingQuestions": [
+    "Q01",
+    "Q03",
+    "Q04",
+    "Q05",
+    "Q06",
+    "Q07",
+    "Q08",
+    "Q09",
+    "Q10"
+  ],
+  "unresolvedRequirements": [
+    "OUTFIT_OPTION_STYLE_METADATA",
+    "COMPARISON_PAIR_ATTRIBUTE_METADATA",
+    "CANDIDATE_DISCRIMINATION_RULE",
+    "NEGATIVE_EVIDENCE_INTERPRETATION"
+  ],
+  "decision": {
+    "eligibleCandidates": ["R01", "R02"],
+    "representativeCandidate": null,
+    "finalResult": null,
+    "reason": "INSUFFICIENT_DISCRIMINATING_EVIDENCE"
+  }
+}

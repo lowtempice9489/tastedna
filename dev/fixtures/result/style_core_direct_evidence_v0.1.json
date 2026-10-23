@@ -1,0 +1,27 @@
+{
+  "version": "0.1",
+  "status": "CANDIDATE_EVIDENCE_ONLY",
+  "sourceDefinition": "SIMPLE-V1-DRAFT",
+  "sourceDefinitionId": "22222222-2222-4222-8222-222222222222",
+  "sourceQuestionId": "Q02",
+  "sourceObservationType": "DIRECT_FASHION_LOOK_PREFERENCE",
+  "rules": [
+    {"optionId": "R01", "candidateId": "R01"},
+    {"optionId": "R02", "candidateId": "R02"},
+    {"optionId": "R03", "candidateId": "R03"},
+    {"optionId": "R04", "candidateId": "R04"},
+    {"optionId": "R05", "candidateId": "R05"},
+    {"optionId": "R06", "candidateId": "R06"},
+    {"optionId": "R07", "candidateId": "R07"},
+    {"optionId": "R08", "candidateId": "R08"},
+    {"optionId": "R09", "candidateId": "R09"},
+    {"optionId": "R10", "candidateId": "R10"},
+    {"optionId": "R11", "candidateId": "R11"},
+    {"optionId": "R12", "candidateId": "R12"}
+  ],
+  "constraints": {
+    "requiresExplicitSelection": true,
+    "assignsScore": false,
+    "determinesFinalResult": false
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "version": "0.1",
+  "definitionId": "22222222-2222-4222-8222-222222222222",
+  "questionId": "Q09",
+  "kind": "COMPARISON",
+  "status": "AWAITING_VISUAL_DEFINITION",
+  "comparisons": [
+    {
+      "comparisonId": "C01",
+      "combinationFocus": null,
+      "options": [
+        {
+          "optionId": "A",
+          "visualAssetId": null,
+          "outfitComponents": [],
+          "combinationAttributes": []
+        },
+        {
+          "optionId": "B",
+          "visualAssetId": null,
+          "outfitComponents": [],
+          "combinationAttributes": []
+        }
+      ],
+      "candidateEvidenceMappings": []
+    },
+    {
+      "comparisonId": "C02",
+      "combinationFocus": null,
+      "options": [
+        {
+          "optionId": "A",
+          "visualAssetId": null,
+          "outfitComponents": [],
+          "combinationAttributes": []
+        },
+        {
+          "optionId": "B",
+          "visualAssetId": null,
+          "outfitComponents": [],
+          "combinationAttributes": []
+        }
+      ],
+      "candidateEvidenceMappings": []
+    },
+    {
+      "comparisonId": "C03",
+      "combinationFocus": null,
+      "options": [
+        {
+          "optionId": "A",
+          "visualAssetId": null,
+          "outfitComponents": [],
+          "combinationAttributes": []
+        },
+        {
+          "optionId": "B",
+          "visualAssetId": null,
+          "outfitComponents": [],
+          "combinationAttributes": []
+        }
+      ],
+      "candidateEvidenceMappings": []
+    }
+  ],
+  "constraints": {
+    "requireVerifiedOutfitComponents": true,
+    "requireVerifiedCombinationAttributes": true,
+    "doNotInferStyleFromOptionId": true,
+    "allowUnresolvedMappings": true,
+    "assignsScore": false
+  }
+}

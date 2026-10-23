@@ -1,0 +1,41 @@
+{
+  "version": "0.1",
+  "definitionId": "22222222-2222-4222-8222-222222222222",
+  "status": "AWAITING_VISUAL_DEFINITION",
+  "questions": {
+    "Q05": {
+      "kind": "SINGLE_CHOICE",
+      "observationType": "DIRECT_FIRST_IMPRESSION_OUTFIT",
+      "selectionMeaning": "FIRST_IMPRESSION",
+      "options": [
+        {"optionId": "A", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "B", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "C", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "D", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "E", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "F", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []}
+      ]
+    },
+    "Q10": {
+      "kind": "SINGLE_CHOICE",
+      "observationType": "DIRECT_FINAL_OUTFIT_PREFERENCE",
+      "selectionMeaning": "FINAL_PREFERENCE",
+      "options": [
+        {"optionId": "A", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "B", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "C", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "D", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "E", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []},
+        {"optionId": "F", "visualAssetId": null, "outfitComponents": [], "observableStyleAttributes": [], "candidateEvidenceMappings": []}
+      ]
+    }
+  },
+  "constraints": {
+    "doNotInferStyleFromOptionId": true,
+    "requireVerifiedVisualAttributes": true,
+    "requireEvidenceForCandidateMapping": true,
+    "keepFirstImpressionAndFinalPreferenceDistinct": true,
+    "allowUnresolvedMappings": true,
+    "assignsScore": false
+  }
+}

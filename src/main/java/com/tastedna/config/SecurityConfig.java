@@ -20,7 +20,6 @@ public class SecurityConfig {
             throws Exception {
 
         http
-                // 로컬 API 테스트에서만 CSRF 비활성화
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
@@ -43,13 +42,23 @@ public class SecurityConfig {
                 "DEV_MEMBER_PASSWORD");
 
         var encoder = new BCryptPasswordEncoder();
+        String encodedPassword =
+                "{bcrypt}" + encoder.encode(password);
 
-        var member = User.withUsername("dev-member-001")
-                .password("{bcrypt}" + encoder.encode(password))
+        var member001 = User.withUsername("dev-member-001")
+                .password(encodedPassword)
                 .roles("MEMBER")
                 .build();
 
-        return new InMemoryUserDetailsManager(member);
+        var member002 = User.withUsername("dev-member-002")
+                .password(encodedPassword)
+                .roles("MEMBER")
+                .build();
+
+        return new InMemoryUserDetailsManager(
+                member001,
+                member002
+        );
     }
 
     @Bean

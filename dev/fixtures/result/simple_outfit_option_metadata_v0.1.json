@@ -1,0 +1,56 @@
+{
+  "version": "0.1",
+  "definitionId": "22222222-2222-4222-8222-222222222222",
+  "status": "METADATA_REQUIRED",
+  "questions": {
+    "Q05": {
+      "kind": "SINGLE_CHOICE",
+      "optionIds": ["A", "B", "C", "D", "E", "F"],
+      "metadataRequired": [
+        "visualAssetId",
+        "outfitComponents",
+        "observableStyleAttributes",
+        "candidateEvidenceMappings"
+      ]
+    },
+    "Q08": {
+      "kind": "COMPARISON",
+      "comparisonIds": ["C01", "C02", "C03"],
+      "optionIds": ["A", "B"],
+      "metadataRequired": [
+        "visualAssetId",
+        "comparedAttribute",
+        "optionAttributeValues",
+        "candidateEvidenceMappings"
+      ]
+    },
+    "Q09": {
+      "kind": "COMPARISON",
+      "comparisonIds": ["C01", "C02", "C03"],
+      "optionIds": ["A", "B"],
+      "metadataRequired": [
+        "visualAssetId",
+        "outfitComponents",
+        "combinationAttributes",
+        "candidateEvidenceMappings"
+      ]
+    },
+    "Q10": {
+      "kind": "SINGLE_CHOICE",
+      "optionIds": ["A", "B", "C", "D", "E", "F"],
+      "metadataRequired": [
+        "visualAssetId",
+        "outfitComponents",
+        "observableStyleAttributes",
+        "candidateEvidenceMappings"
+      ]
+    }
+  },
+  "constraints": {
+    "doNotInferStyleFromOptionId": true,
+    "requireVerifiedVisualAttributes": true,
+    "requireEvidenceForCandidateMapping": true,
+    "allowUnresolvedMappings": true,
+    "assignsScore": false
+  }
+}
