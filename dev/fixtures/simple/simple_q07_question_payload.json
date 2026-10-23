@@ -1,0 +1,37 @@
+{
+  "kind": "MULTIPLE_CHOICE",
+  "prompt": "내 옷으로는 피하고 싶은 것을 골라주세요.",
+  "description": "다른 사람에게 잘 어울리는지는 생각하지 말고, 내가 입는다고 생각해주세요.",
+  "maxSelections": 2,
+  "exclusiveOptionIds": ["NONE"],
+  "options": [
+    {
+      "id": "A",
+      "label": "착장 A"
+    },
+    {
+      "id": "B",
+      "label": "착장 B"
+    },
+    {
+      "id": "C",
+      "label": "착장 C"
+    },
+    {
+      "id": "D",
+      "label": "착장 D"
+    },
+    {
+      "id": "E",
+      "label": "착장 E"
+    },
+    {
+      "id": "F",
+      "label": "착장 F"
+    },
+    {
+      "id": "NONE",
+      "label": "딱히 피하고 싶은 옷이 없어요"
+    }
+  ]
+}

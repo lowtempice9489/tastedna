@@ -1,0 +1,49 @@
+{
+  "kind": "COMPARISON",
+  "prompt": "거의 비슷한 두 옷 중 더 마음에 드는 쪽을 골라주세요.",
+  "description": "한 가지 차이에 집중해서 실제로 더 입고 싶은 쪽을 선택해주세요.",
+  "comparisons": [
+    {
+      "id": "C01",
+      "label": "비교 1",
+      "options": [
+        {
+          "id": "A",
+          "label": "의류 A"
+        },
+        {
+          "id": "B",
+          "label": "의류 B"
+        }
+      ]
+    },
+    {
+      "id": "C02",
+      "label": "비교 2",
+      "options": [
+        {
+          "id": "A",
+          "label": "의류 A"
+        },
+        {
+          "id": "B",
+          "label": "의류 B"
+        }
+      ]
+    },
+    {
+      "id": "C03",
+      "label": "비교 3",
+      "options": [
+        {
+          "id": "A",
+          "label": "의류 A"
+        },
+        {
+          "id": "B",
+          "label": "의류 B"
+        }
+      ]
+    }
+  ]
+}

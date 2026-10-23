@@ -1,5 +1,6 @@
 package com.tastedna.scoring.application;
 
+import com.tastedna.session.application.comparison.ComparisonAnswerPayloadExtractor;
 import com.tastedna.session.application.multi.MultiChoiceAnswerPayloadExtractor;
 import com.tastedna.session.application.single.SingleChoiceAnswerPayloadExtractor;
 import com.tastedna.session.domain.SessionAnswer;
@@ -145,6 +146,58 @@ public class SessionObservationService {
                         SingleChoiceAnswerPayloadExtractor.extract(
                                 payload
                         )
+                );
+
+            } else if ("COMPARISON".equals(kind)) {
+                var selections =
+                        ComparisonAnswerPayloadExtractor.extract(
+                                payload
+                        );
+
+                // 제시된 비교쌍 순서에 맞춰 관측을 수집한다.
+                JsonNode comparisons = question.get("comparisons");
+
+                if (comparisons == null
+                        || !comparisons.isArray()
+                        || comparisons.size() != selections.size()) {
+                    throw new IllegalStateException(
+                            "INVALID_STORED_COMPARISON"
+                    );
+                }
+
+                List<String> comparisonOptions =
+                        new ArrayList<>();
+
+                for (JsonNode comparison : comparisons) {
+                    JsonNode comparisonIdNode =
+                            comparison.get("id");
+
+                    if (comparisonIdNode == null
+                            || !comparisonIdNode.isString()) {
+                        throw new IllegalStateException(
+                                "INVALID_STORED_COMPARISON"
+                        );
+                    }
+
+                    String comparisonId =
+                            comparisonIdNode.stringValue();
+
+                    String selectedOptionId =
+                            selections.get(comparisonId);
+
+                    if (selectedOptionId == null) {
+                        throw new IllegalStateException(
+                                "INVALID_STORED_COMPARISON"
+                        );
+                    }
+
+                    comparisonOptions.add(
+                            comparisonId + ":" + selectedOptionId
+                    );
+                }
+
+                selectedOptionIds = List.copyOf(
+                        comparisonOptions
                 );
 
             } else {

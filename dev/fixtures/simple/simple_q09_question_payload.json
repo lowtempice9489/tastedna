@@ -1,0 +1,49 @@
+{
+  "kind": "COMPARISON",
+  "prompt": "같은 취향 요소도 어떻게 조합하느냐에 따라 느낌이 달라져요.",
+  "description": "각 조합에서 실제로 더 입고 싶은 착장을 골라주세요.",
+  "comparisons": [
+    {
+      "id": "C01",
+      "label": "비교 1",
+      "options": [
+        {
+          "id": "A",
+          "label": "착장 A"
+        },
+        {
+          "id": "B",
+          "label": "착장 B"
+        }
+      ]
+    },
+    {
+      "id": "C02",
+      "label": "비교 2",
+      "options": [
+        {
+          "id": "A",
+          "label": "착장 A"
+        },
+        {
+          "id": "B",
+          "label": "착장 B"
+        }
+      ]
+    },
+    {
+      "id": "C03",
+      "label": "비교 3",
+      "options": [
+        {
+          "id": "A",
+          "label": "착장 A"
+        },
+        {
+          "id": "B",
+          "label": "착장 B"
+        }
+      ]
+    }
+  ]
+}

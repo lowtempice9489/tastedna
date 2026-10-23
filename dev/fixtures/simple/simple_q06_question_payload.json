@@ -1,0 +1,31 @@
+{
+  "kind": "SINGLE_CHOICE",
+  "prompt": "이 중 하나를 실제로 내 옷으로 고른다면 어떤 옷을 선택하시겠어요?",
+  "description": "가격과 브랜드는 모두 비슷하다고 생각하고 골라주세요.",
+  "options": [
+    {
+      "id": "A",
+      "label": "의류 A"
+    },
+    {
+      "id": "B",
+      "label": "의류 B"
+    },
+    {
+      "id": "C",
+      "label": "의류 C"
+    },
+    {
+      "id": "D",
+      "label": "의류 D"
+    },
+    {
+      "id": "E",
+      "label": "의류 E"
+    },
+    {
+      "id": "F",
+      "label": "의류 F"
+    }
+  ]
+}

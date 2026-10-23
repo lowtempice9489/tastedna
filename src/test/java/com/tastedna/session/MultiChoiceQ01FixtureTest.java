@@ -19,7 +19,7 @@ class MultiChoiceQ01FixtureTest {
         JsonMapper mapper = JsonMapper.builder().build();
 
         String questionPayload = Files.readString(
-                Path.of("dev", "fixtures",
+                Path.of("dev", "fixtures", "simple",
                         "simple_q01_question_payload.json")
         );
 
