@@ -12,6 +12,8 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+// 실제 DB에 저장된 개발용 세션에서 Raw 관측과 초기 RESULT 후보 추출을 검증한다.
+// 고정된 테스트 회원과 세션 데이터가 준비돼 있다는 전제에서 실행하는 통합 테스트다.
 @SpringBootTest
 class StyleCoreCandidateServiceIntegrationTest {
 
@@ -27,6 +29,8 @@ class StyleCoreCandidateServiceIntegrationTest {
     @Autowired
     private JsonMapper mapper;
 
+    // 저장된 세션의 Q02 선택이 R01과 R02 후보로 연결되는지 확인한다.
+    // 실제 답변 저장 데이터에서 후보 추출까지 이어지는 흐름을 검증한다.
     @Test
     void extractsCandidatesFromActualSavedSession() {
 

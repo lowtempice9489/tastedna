@@ -29,6 +29,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+// TestSessionService의 세션 생성·조회·재개·답변 저장 정책을 검증하는 단위 테스트다.
+// Repository와 JsonMapper를 Mock으로 대체하므로 실제 DB 동작은 검증하지 않는다.
 @ExtendWith(MockitoExtension.class)
 class TestSessionServiceTest {
 
@@ -60,6 +62,8 @@ class TestSessionServiceTest {
         );
     }
 
+    // IN_PROGRESS 또는 SUBMITTED 세션이 이미 있으면 새 세션 생성을 차단한다.
+    // 중복 세션 발견 시 테스트 정의 조회나 세션 저장을 진행하지 않아야 한다.
     @Test
     void existingActiveSessionReturns409() {
 
@@ -248,6 +252,8 @@ class TestSessionServiceTest {
         assertNotNull(response.leaseUntil());
     }
 
+    // 현재 활성 세션 조회는 leaseUntil 만료 여부가 아니라 세션 상태를 기준으로 한다.
+    // 임대 시간이 지나도 IN_PROGRESS 상태라면 조회 결과에 포함되는 현재 정책을 검증한다.
     @Test
     void activeSessionCanBeFoundAfterLeaseExpires() {
 
@@ -365,6 +371,8 @@ class TestSessionServiceTest {
         );
     }
 
+    // 현재 세션보다 오래된 Revision으로 답변 저장을 요청하면 HTTP 409를 반환한다.
+    // 충돌 시 세션 Revision을 변경하거나 답변 Repository에 접근하지 않아야 한다.
     @Test
     void saveAnswerRejectsStaleRevision() {
 
@@ -425,6 +433,8 @@ class TestSessionServiceTest {
         verifyNoInteractions(questionRepository);
     }
 
+    // 처음 저장하는 답변은 새 SessionAnswer로 생성하고 세션 Revision을 증가시킨다.
+    // 사용자 답변과 당시 질문 정의가 함께 저장되는지도 확인한다.
     @Test
     void saveAnswerCreatesAnswerAndAdvancesRevision() {
 
@@ -525,6 +535,8 @@ class TestSessionServiceTest {
         assertNotNull(saved.getAnsweredAt());
     }
 
+    // 동일 질문에 기존 답변이 있으면 새 레코드 대신 기존 엔티티를 수정한다.
+    // 답변 내용과 Revision이 갱신되는지 확인해 중복 저장을 방지하는 정책을 검증한다.
     @Test
     void saveAnswerUpdatesExistingAnswerAndAdvancesRevision() {
 
@@ -2392,6 +2404,8 @@ class TestSessionServiceTest {
         assertNotNull(saved.getAnsweredAt());
     }
 
+    // 복수 선택 답변이 질문 정의의 maxSelections를 초과하면 저장을 거부한다.
+    // 검증 실패 시 세션 Revision이 증가하거나 답변이 저장되지 않아야 한다.
     @Test
     void saveAnswerRejectsTooManyMultipleChoiceOptions() {
 
@@ -2695,6 +2709,8 @@ class TestSessionServiceTest {
         verify(answerRepository, never()).save(any());
     }
 
+    // 비교형 질문의 세 비교쌍에 유효한 선택값이 있으면 답변 저장을 허용한다.
+    // 비교쌍별 선택 결과와 당시 질문 정의가 답변 엔티티에 보존되는지 확인한다.
     @Test
     void saveAnswerAcceptsValidComparisonAndSaves() {
 

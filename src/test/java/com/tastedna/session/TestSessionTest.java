@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// DB 없이 세션 엔티티의 재개 조건과 Revision 변경 규칙을 검증한다.
+// 상태 변경 실패 시 기존 세션 정보가 유지되는지도 확인한다.
 class TestSessionTest {
 
     private TestSession newSession() {
@@ -44,6 +46,8 @@ class TestSessionTest {
         assertEquals(0L, session.getRevision());
     }
 
+    // 새 임대 만료 시각이 재개 시각보다 늦지 않으면 재개를 거부한다.
+    // 검증 실패 후 기존 접근 시각과 임대 만료 시각이 변경되지 않아야 한다.
     @Test
     void resumeRejectsInvalidLease() {
 
@@ -88,6 +92,8 @@ class TestSessionTest {
         assertEquals(2L, session.getRevision());
     }
 
+    // 이미 변경된 세션에 이전 Revision으로 다시 접근하면 충돌을 발생시킨다.
+    // 충돌 발생 후에도 Revision이 추가로 증가하지 않는지 확인한다.
     @Test
     void advanceRevisionRejectsStaleRevision() {
 

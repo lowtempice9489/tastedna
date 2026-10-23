@@ -7,6 +7,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// 서비스 오류가 API 응답에서 올바른 HTTP 상태와 오류 코드로 유지되는지 검증한다.
+// 클라이언트가 오류 코드를 기준으로 분기할 수 있도록 응답 계약을 보호한다.
 class SessionExceptionHandlerTest {
 
     private final SessionExceptionHandler handler =

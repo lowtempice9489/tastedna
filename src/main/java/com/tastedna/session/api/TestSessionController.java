@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+// 테스트 세션 생성·조회·재개, 답변 저장, 질문 조회 API를 제공한다.
+// 인증된 회원 정보를 서비스에 전달하며, 실제 세션 처리와 검증은 TestSessionService가 담당한다.
 @RestController
 @RequestMapping("/api/v1/sessions")
 public class TestSessionController {
@@ -23,6 +25,8 @@ public class TestSessionController {
         this.service = service;
     }
 
+    // POST /api/v1/sessions — 인증된 회원의 새 테스트 세션을 생성한다.
+    // 활성 테스트 정의와 중복 세션 여부는 서비스에서 검증한다.
     @PostMapping
     public ResponseEntity<SessionResponse> start(
             @Valid @RequestBody StartSessionRequest request,
@@ -33,6 +37,8 @@ public class TestSessionController {
         );
     }
 
+    // GET /api/v1/sessions/active — 회원의 활성 세션을 조회한다.
+    // 해당 세션이 없으면 오류 대신 HTTP 204 No Content를 반환한다.
     @GetMapping("/active")
     public ResponseEntity<SessionResponse> active(
             Authentication authentication) {
@@ -42,6 +48,8 @@ public class TestSessionController {
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
+    // POST /{sessionId}/resume — 진행 중인 본인 세션을 재개한다.
+    // 세션 소유권과 재개 가능 상태는 서비스에서 확인한다.
     @PostMapping("/{sessionId}/resume")
     public ResponseEntity<SessionResponse> resume(
             @PathVariable UUID sessionId,
@@ -62,6 +70,8 @@ public class TestSessionController {
         );
     }
 
+    // POST /{sessionId}/answers — 질문 답변을 저장하거나 수정한다.
+    // 질문별 유효성 및 Revision 충돌을 검증하며, 마지막 답변 저장만으로 세션을 제출하지는 않는다.
     @PostMapping("/{sessionId}/answers")
     public ResponseEntity<SessionResponse> saveAnswer(
             @PathVariable UUID sessionId,
@@ -90,6 +100,8 @@ public class TestSessionController {
         );
     }
 
+    // GET /{sessionId}/questions — 해당 세션에 배정된 질문 목록을 조회한다.
+    // 세션 시작 시 저장된 질문 순서를 기준으로 응답하며, 질문 데이터는 서비스에서 구성한다.
     @GetMapping("/{sessionId}/questions")
     public QuestionListResponse getQuestions(
             Authentication authentication,

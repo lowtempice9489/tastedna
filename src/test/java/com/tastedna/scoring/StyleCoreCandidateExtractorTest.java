@@ -11,6 +11,8 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Q02의 명시적 스타일 선택 관측만 RESULT 초기 후보로 추출하는지 검증한다.
+// 다른 질문이나 추론 관측이 후보에 섞이지 않도록 판별 경계를 보호한다.
 class StyleCoreCandidateExtractorTest {
 
     private static final String DEFINITION_ID =
@@ -28,6 +30,8 @@ class StyleCoreCandidateExtractorTest {
         );
     }
 
+    // Q02에서 명시적으로 선택한 R01과 R02가 초기 후보로 추출되는지 확인한다.
+    // 후보 추출은 점수 계산이나 최종 RESULT 확정을 의미하지 않는다.
     @Test
     void extractsCandidatesFromActualQ02Observation()
             throws Exception {
@@ -63,6 +67,8 @@ class StyleCoreCandidateExtractorTest {
         );
     }
 
+    // 추론 관측이나 Q02 이외 질문에서 발생한 관측은 초기 후보 근거로 인정하지 않는다.
+    // 명시적 선택이라는 근거 조건이 유지되는지 검증한다.
     @Test
     void ignoresObservationsWithoutExplicitQ02Evidence()
             throws Exception {
@@ -143,6 +149,8 @@ class StyleCoreCandidateExtractorTest {
         );
     }
 
+    // 후보 매핑이 기대하는 테스트 정의와 다른 definitionId의 관측은 거부한다.
+    // 서로 다른 테스트 버전의 관측이 동일한 후보 판별에 혼합되는 것을 방지한다.
     @Test
     void rejectsDifferentDefinitionId() throws Exception {
 

@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// 실제 테스트 DB에서 세션 행 잠금, 답변 저장 및 데이터 무결성을 검증한다.
+// 단위 테스트와 달리 DB 트랜잭션 및 JPA 동작을 함께 확인하는 통합 테스트다.
 @SpringBootTest
 @ActiveProfiles("test")
 class TestSessionLockIntegrationTest {
@@ -48,6 +50,8 @@ class TestSessionLockIntegrationTest {
     @Autowired
     private JsonMapper jsonMapper;
 
+    // 첫 번째 트랜잭션이 세션 행을 잠근 동안 두 번째 트랜잭션이 대기하는지 확인한다.
+    // 첫 번째 잠금이 해제된 뒤 두 번째 트랜잭션이 완료돼야 한다.
     @Test
     void secondTransactionWaitsForFirstLock() throws Exception {
 
@@ -198,6 +202,8 @@ class TestSessionLockIntegrationTest {
         }
     }
 
+    // 답변 최초 저장과 수정 시 세션·답변 Revision이 함께 갱신되는지 검증한다.
+    // 다른 회원의 접근과 이전 Revision을 이용한 수정 요청이 거부되는지도 확인한다.
     @Test
     void saveAnswerPersistsAnswerAndRevision() throws Exception {
 
@@ -568,6 +574,8 @@ class TestSessionLockIntegrationTest {
         }
     }
 
+    // 존재하지 않는 질문에 선택지 관측·점수 규칙을 연결하려 하면 DB가 저장을 거부해야 한다.
+    // 질문 정의와 규칙 데이터 사이의 참조 무결성을 검증한다.
     @Test
     void scoringRuleRejectsNonexistentQuestion() {
 
@@ -767,6 +775,8 @@ class TestSessionLockIntegrationTest {
         }
     }
 
+    // DB에 저장한 선택지 규칙을 JPA 복합 키와 질문별 조회로 읽을 수 있는지 검증한다.
+    // 동일 질문 ID라도 다른 테스트 정의의 규칙과 섞이지 않아야 한다.
     @Test
     void scoringRuleCanBeReadThroughJpa() {
 

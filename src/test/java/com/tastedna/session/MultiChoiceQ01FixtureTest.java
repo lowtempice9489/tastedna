@@ -1,4 +1,3 @@
-
 package com.tastedna.session;
 
 import com.tastedna.session.application.multi.MultiChoiceAnswerValidator;
@@ -11,8 +10,12 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// 실제 Simple Q01 질문 Fixture와 복수 선택 답변 검증 규칙의 일치 여부를 확인한다.
+// 질문 선택지 구성이나 최대 선택 개수가 변경될 때 의도치 않은 계약 변경을 발견하기 위한 테스트다.
 class MultiChoiceQ01FixtureTest {
 
+    // Q01의 선택지가 15개이고 최대 5개까지 선택 가능한지 검증한다.
+    // 정상적인 5개 선택은 허용하고 6개 선택은 거부해야 한다.
     @Test
     void actualQ01FixtureFollowsAnswerContract() throws Exception {
 

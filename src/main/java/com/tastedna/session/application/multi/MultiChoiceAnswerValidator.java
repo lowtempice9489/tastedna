@@ -7,11 +7,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+// 복수 선택형 질문의 답변을 검증하며, 선택 가능 개수와 배타적 선택 조건을 확인한다.
+// 질문 정의와 실제 선택값을 함께 사용해 잘못된 조합의 저장을 방지한다.
 public final class MultiChoiceAnswerValidator {
 
     private MultiChoiceAnswerValidator() {
     }
 
+    // 질문에 정의된 선택지와 최대 선택 개수를 확인한 뒤 제출된 답변을 검사한다.
+    // 기본 선택 조건을 통과해도 배타적 선택지 조건은 추가로 검증한다.
     public static void validate(
             String questionPayload,
             JsonNode answerPayload,
@@ -42,6 +46,8 @@ public final class MultiChoiceAnswerValidator {
         );
     }
 
+    // NONE처럼 다른 선택지와 함께 고를 수 없는 배타적 선택지를 검증한다.
+    // 배타적 선택지를 다른 옵션과 동시에 제출하면 EXCLUSIVE_OPTION_CONFLICT를 발생시킨다.
     private static void validateExclusiveOptions(
             String questionPayload,
             List<String> selectedOptionIds,

@@ -31,6 +31,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 
+// 테스트 세션 생성·조회·재개와 답변 저장을 관리하는 핵심 서비스.
+// 회원별 세션 접근, 질문 유효성, 답변 Revision을 검증한다.
 @Service
 @RequiredArgsConstructor
 public class TestSessionService {
@@ -41,6 +43,8 @@ public class TestSessionService {
     private final SessionAnswerRepository answerRepository;
     private final JsonMapper mapper;
 
+    // 활성 테스트 정의와 질문 목록을 조회해 새 세션을 생성한다.
+    // 동일 회원의 진행 중이거나 제출된 세션이 있으면 중복 생성을 차단한다.
     @Transactional
     public SessionResponse start(
             String memberId,
@@ -82,6 +86,8 @@ public class TestSessionService {
                 .map(q -> q.getId().getQuestionId())
                 .toList();
 
+        // 세션 시작 당시의 질문 순서를 JSON으로 저장한다.
+        // 이후 질문 조회와 답변 저장 시 이 순서를 기준으로 소속 여부를 확인한다.
         String questionOrder = mapper.writeValueAsString(questionIds);
 
         UUID sessionId = UUID.randomUUID();
@@ -171,6 +177,8 @@ public class TestSessionService {
         );
     }
 
+    // 본인 소유의 진행 중인 세션만 재개할 수 있도록 DB 잠금 후 상태를 검사한다.
+    // 재개 시 세션의 임대 만료 시각(leaseUntil)을 갱신한다.
     @Transactional
     public SessionResponse resume(
             String memberId,
@@ -216,6 +224,8 @@ public class TestSessionService {
         return toResponse(session, definition.getTestMode());
     }
 
+    // 세션에 속한 질문의 답변을 검증하고 저장하거나 기존 답변을 수정한다.
+    // 예상 Revision이 현재 세션과 다르면 충돌로 처리해 덮어쓰기를 방지한다.
     @Transactional
     public SessionResponse saveAnswer(
             String memberId,
@@ -306,6 +316,8 @@ public class TestSessionService {
                 ? kindNode.stringValue()
                 : null;
 
+        // SINGLE·MULTIPLE·COMPARISON 유형에 맞는 검증기로 답변 형식을 확인한다.
+        // 검증 실패 시 저장하지 않으며, 지원하지 않는 질문 유형도 거부한다.
         if ("SINGLE_CHOICE".equals(questionKind)) {
             try {
                 SingleChoiceAnswerValidator.validate(
@@ -378,6 +390,8 @@ public class TestSessionService {
 
         long newRevision = session.getRevision();
 
+        // 같은 질문에 답변이 있으면 새 Revision으로 수정하고, 없으면 새로 저장한다.
+        // 답변과 함께 당시 사용자에게 제시된 질문 내용도 보관한다.
         Optional<SessionAnswer> existingAnswer =
                 answerRepository.findById(answerId);
 
@@ -545,6 +559,8 @@ public class TestSessionService {
         );
     }
 
+    // 세션 엔티티를 API 응답에 필요한 정보만 담은 SessionResponse로 변환한다.
+    // DB에 저장된 임대 만료 시각은 UTC 기준 Instant로 변환한다.
     private SessionResponse toResponse(
             TestSession session,
             String testMode) {
