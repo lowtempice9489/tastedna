@@ -198,4 +198,55 @@ class SimpleCandidateAttributeMatcherTest {
                 exception.getMessage()
         );
     }
+
+    // 두 후보가 공유하는 선택과 각 후보에만 연결된 선택을 구분한다.
+    @Test
+    void separatesCommonAndDistinctiveEvidence() {
+
+        var matches = java.util.List.of(
+                new SimpleCandidateAttributeMatcher.CandidateMatches(
+                        "R01",
+                        java.util.List.of(
+                                new SimpleCandidateAttributeMatcher.AttributeMatch(
+                                        "Q03", "S02", "R01 속성 가설", 1L
+                                ),
+                                new SimpleCandidateAttributeMatcher.AttributeMatch(
+                                        "Q04", "P01", "공통 속성 가설", 1L
+                                )
+                        )
+                ),
+                new SimpleCandidateAttributeMatcher.CandidateMatches(
+                        "R02",
+                        java.util.List.of(
+                                new SimpleCandidateAttributeMatcher.AttributeMatch(
+                                        "Q03", "S05", "R02 속성 가설", 1L
+                                ),
+                                new SimpleCandidateAttributeMatcher.AttributeMatch(
+                                        "Q04", "P01", "공통 속성 가설", 1L
+                                )
+                        )
+                )
+        );
+
+        var comparison =
+                SimpleCandidateAttributeMatcher.compareEvidence(
+                        matches
+                );
+
+        assertEquals(
+                java.util.Set.of("Q04:P01"),
+                comparison.commonSelections()
+        );
+
+        assertEquals(
+                java.util.Set.of("Q03:S02"),
+                comparison.distinctiveSelections().get("R01")
+        );
+
+        assertEquals(
+                java.util.Set.of("Q03:S05"),
+                comparison.distinctiveSelections().get("R02")
+        );
+    }
+
 }

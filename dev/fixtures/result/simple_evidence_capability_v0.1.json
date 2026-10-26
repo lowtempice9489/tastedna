@@ -1,0 +1,49 @@
+{
+  "version": "0.1",
+  "definitionId": "22222222-2222-4222-8222-222222222222",
+  "status": "EXPERIMENTAL",
+  "purpose": "SIMPLE_RESULT_EVIDENCE_CAPABILITY",
+
+  "evidenceGroups": [
+    {
+      "groupId": "DIRECT_STYLE",
+      "questions": ["Q02"],
+      "role": "INITIAL_CANDIDATE_GENERATION",
+      "readiness": "AVAILABLE"
+    },
+    {
+      "groupId": "TEXT_ATTRIBUTES",
+      "questions": ["Q01", "Q03", "Q04"],
+      "role": "CANDIDATE_ATTRIBUTE_COMPATIBILITY",
+      "readiness": "ATTRIBUTE_MEANING_AVAILABLE",
+      "candidateMappingsVerified": false
+    },
+    {
+      "groupId": "VISUAL_PREFERENCES",
+      "questions": ["Q05", "Q06", "Q07", "Q10"],
+      "role": "OUTFIT_PREFERENCE_AND_AVOIDANCE",
+      "readiness": "VISUAL_ATTRIBUTES_REQUIRED"
+    },
+    {
+      "groupId": "VISUAL_COMPARISONS",
+      "questions": ["Q08"],
+      "role": "PAIRWISE_ATTRIBUTE_PREFERENCE",
+      "readiness": "COMPARISON_ATTRIBUTES_REQUIRED"
+    },
+    {
+      "groupId": "VISUAL_COMBINATIONS",
+      "questions": ["Q09"],
+      "role": "COMBINATION_COMPATIBILITY",
+      "readiness": "COMBINATION_ATTRIBUTES_REQUIRED"
+    }
+  ],
+
+  "constraints": {
+    "doNotInferStyleFromVisualOptionId": true,
+    "doNotTreatUnselectedOptionsAsDisliked": true,
+    "doNotTreatMissingEvidenceAsNegative": true,
+    "doNotAssumeAttributeIndependence": true,
+    "doNotAutomaticallySumEvidenceGroups": true,
+    "requireVerifiedMappingsForFinalClassification": true
+  }
+}

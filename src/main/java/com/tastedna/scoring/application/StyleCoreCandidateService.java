@@ -6,6 +6,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 // 실제 세션의 Raw 관측을 이용해 Style Core 초기 후보와 근거 준비 상태를 평가한다.
@@ -214,6 +215,329 @@ public class StyleCoreCandidateService {
                     e
             );
         }
+    }
+
+    // 실제 Simple 세션의 초기 후보들 사이에서 공통·차별 근거를 구분한다.
+    // 실험용 속성 매핑 결과를 비교하며, 점수나 최종 RESULT는 확정하지 않는다.
+    public SimpleCandidateAttributeMatcher.EvidenceComparison
+    compareSimpleCandidateEvidenceFromSession(
+            String memberId,
+            String sessionId
+    ) {
+        var matches = matchSimpleAttributesFromSession(
+                memberId,
+                sessionId
+        );
+
+        return SimpleCandidateAttributeMatcher.compareEvidence(
+                matches
+        );
+    }
+
+    // 실제 Simple 세션에서 후보 간 속성 판별 신호를 평가한다.
+    // 실험용 매핑에서 관측된 잠정 우세 여부만 판단하며
+    // 최종 RESULT나 대표 스타일은 확정하지 않는다.
+    public SimpleCandidateDiscrimination.AttributeSignalAssessment
+    assessSimpleAttributeSignalsFromSession(
+            String memberId,
+            String sessionId
+    ) {
+        var comparison =
+                compareSimpleCandidateEvidenceFromSession(
+                        memberId,
+                        sessionId
+                );
+
+        return SimpleCandidateDiscrimination.assessAttributeSignals(
+                comparison
+        );
+    }
+
+    // 실제 Simple 세션의 관측을 R01·R02 후보 속성 프로필과 대조한다.
+    // 공유 근거와 양립 가능한 속성, 아직 해석하지 못한 관측을 구분한다.
+    public SimpleCandidateDiscrimination.ProfileEvidenceReview
+    reviewSimpleCandidateProfilesFromSession(
+            String memberId,
+            String sessionId
+    ) {
+        SimpleObservationProfile profile =
+                buildSimpleObservationProfile(
+                        memberId,
+                        sessionId
+                );
+
+        try {
+            JsonNode candidateProfiles = mapper.readTree(
+                    Files.readString(Path.of(
+                            "dev", "fixtures", "result",
+                            "simple_style_core_candidate_profiles_v0.1.json"
+                    ))
+            );
+
+            return SimpleCandidateDiscrimination.reviewCandidateProfiles(
+                    profile,
+                    candidateProfiles
+            );
+
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(
+                    "CANDIDATE_PROFILES_LOAD_FAILED",
+                    e
+            );
+        }
+    }
+
+    // 실제 Simple 세션에서 관측의 처리 상태를 분류한다.
+    // 이미 해석한 속성과 아직 매핑 또는 시각 정보가 필요한 관측을 구별한다.
+    public java.util.Map<String, Set<String>>
+    classifySimpleEvidenceReadinessFromSession(
+            String memberId,
+            String sessionId
+    ) {
+        SimpleObservationProfile profile =
+                buildSimpleObservationProfile(
+                        memberId,
+                        sessionId
+                );
+
+        var review = reviewSimpleCandidateProfilesFromSession(
+                memberId,
+                sessionId
+        );
+
+        return SimpleCandidateDiscrimination.classifyEvidenceReadiness(
+                profile,
+                review
+        );
+    }
+
+    // Simple 세션의 판별에 필요한 중간 결과를 하나로 묶는다.
+    // 아직 최종 RESULT를 확정하지 않으며, 판별 근거와 준비 상태를 보존한다.
+    public record SimpleResultAnalysis(
+            Set<String> initialCandidates,
+            List<SimpleCandidateAttributeMatcher.CandidateMatches> attributeMatches,
+            SimpleCandidateAttributeMatcher.EvidenceComparison evidenceComparison,
+            SimpleCandidateDiscrimination.AttributeSignalAssessment signalAssessment,
+            SimpleCandidateDiscrimination.ProfileEvidenceReview profileReview,
+            Map<String, Set<String>> evidenceReadiness
+    ) {
+        public SimpleResultAnalysis {
+            initialCandidates = Set.copyOf(initialCandidates);
+            attributeMatches = List.copyOf(attributeMatches);
+            evidenceReadiness = Map.copyOf(evidenceReadiness);
+        }
+    }
+
+    // 실제 Simple 세션의 Raw 관측을 한 번만 수집해
+    // 초기 후보부터 속성 관계 분석과 판별 신호 평가까지 수행한다.
+    public SimpleResultAnalysis analyzeSimpleSession(
+            String memberId,
+            String sessionId
+    ) {
+        // 하나의 Raw 관측 스냅샷을 전체 분석에서 공유한다.
+        var rawObservations = observationService.collectRaw(
+                memberId,
+                sessionId
+        );
+
+        SimpleObservationProfile profile =
+                new SimpleObservationProfile(rawObservations);
+
+        try {
+            JsonNode observations = mapper.readTree(
+                    mapper.writeValueAsString(rawObservations)
+            );
+
+            JsonNode directMapping = mapper.readTree(
+                    Files.readString(Path.of(
+                            "dev", "fixtures", "result",
+                            "style_core_direct_evidence_v0.1.json"
+                    ))
+            );
+
+            JsonNode attributeMapping = mapper.readTree(
+                    Files.readString(Path.of(
+                            "dev", "fixtures", "result",
+                            "simple_style_core_attribute_mapping_v0.1.json"
+                    ))
+            );
+
+            JsonNode candidateProfiles = mapper.readTree(
+                    Files.readString(Path.of(
+                            "dev", "fixtures", "result",
+                            "simple_style_core_candidate_profiles_v0.1.json"
+                    ))
+            );
+
+            // Q02의 명시적 선택만 초기 후보로 추출한다.
+            Set<String> initialCandidates =
+                    StyleCoreCandidateExtractor.extract(
+                            observations,
+                            directMapping
+                    );
+
+            // 실제 초기 후보에 속하는 매칭 결과만 사용한다.
+            var attributeMatches =
+                    SimpleCandidateAttributeMatcher.match(
+                                    profile,
+                                    attributeMapping
+                            ).stream()
+                            .filter(candidate ->
+                                    initialCandidates.contains(
+                                            candidate.candidateId()
+                                    )
+                            )
+                            .toList();
+
+            // 공통·차별 근거를 분리한다.
+            var comparison =
+                    SimpleCandidateAttributeMatcher.compareEvidence(
+                            attributeMatches
+                    );
+
+            // 매핑상의 차이가 검증된 후보 우세로 오인되지 않도록 평가한다.
+            var signalAssessment =
+                    SimpleCandidateDiscrimination.assessAttributeSignals(
+                            comparison
+                    );
+
+            // 후보 프로필에 정의된 공유·양립 관계를 분석한다.
+            var profileReview =
+                    SimpleCandidateDiscrimination.reviewCandidateProfiles(
+                            profile,
+                            candidateProfiles
+                    );
+
+            // 이미 활용한 관측과 추가 정의가 필요한 관측을 구분한다.
+            var readiness =
+                    SimpleCandidateDiscrimination.classifyEvidenceReadiness(
+                            profile,
+                            profileReview
+                    );
+
+            return new SimpleResultAnalysis(
+                    initialCandidates,
+                    attributeMatches,
+                    comparison,
+                    signalAssessment,
+                    profileReview,
+                    readiness
+            );
+
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(
+                    "SIMPLE_RESULT_ANALYSIS_CONFIGURATION_FAILED",
+                    e
+            );
+        }
+    }
+
+    // Simple RESULT의 선정 가능 상태를 표현한다.
+    // 미검증 근거만 존재할 경우 RESULT 확정을 허용하지 않는다.
+    public record SimpleResultDecision(
+            String status,
+            Set<String> eligibleCandidates,
+            String representativeCandidate,
+            String finalResult,
+            Set<String> blockers
+    ) {
+        public SimpleResultDecision {
+            eligibleCandidates = Set.copyOf(eligibleCandidates);
+            blockers = Set.copyOf(blockers);
+        }
+    }
+
+    // Simple 분석 결과에서 대표 후보와 최종 RESULT 선정 상태를 판단한다.
+    // 직접 선호 후보가 하나라면 대표 후보로 지정하되,
+    // 검증된 최종 판별 규칙이 없으므로 finalResult는 확정하지 않는다.
+    public SimpleResultDecision decideSimpleResult(
+            SimpleResultAnalysis analysis
+    ) {
+        if (analysis == null) {
+            throw new IllegalArgumentException(
+                    "INVALID_SIMPLE_RESULT_ANALYSIS"
+            );
+        }
+
+        Set<String> candidates = analysis.initialCandidates();
+        Set<String> blockers = new java.util.LinkedHashSet<>();
+
+        if (candidates.isEmpty()) {
+            blockers.add("NO_INITIAL_CANDIDATE");
+
+            return new SimpleResultDecision(
+                    "NO_CANDIDATE",
+                    candidates,
+                    null,
+                    null,
+                    blockers
+            );
+        }
+
+        // Q02에서 직접 선호한 스타일이 하나라면
+        // 다른 속성을 임의로 추론하지 않고 대표 후보로 지정한다.
+        if (candidates.size() == 1) {
+            String representativeCandidate =
+                    candidates.iterator().next();
+
+            return new SimpleResultDecision(
+                    "REPRESENTATIVE_SELECTED",
+                    candidates,
+                    representativeCandidate,
+                    null,
+                    Set.of("FINAL_CLASSIFICATION_RULE_NOT_VERIFIED")
+            );
+        }
+
+        // 복수 후보가 존재하면 아직 우세를 확정하지 않는다.
+        // 실험용 속성 매칭의 차이를 검증된 판별 근거로 사용하지 않는다.
+        var signal = analysis.signalAssessment();
+
+        String leadCandidate = signal.provisionalLeadCandidate();
+
+        if (leadCandidate != null
+                && candidates.contains(leadCandidate)
+                && "VERIFIED_LEAD".equals(signal.status())) {
+
+            return new SimpleResultDecision(
+                    "REPRESENTATIVE_SELECTED",
+                    candidates,
+                    leadCandidate,
+                    null,
+                    Set.of("FINAL_CLASSIFICATION_RULE_NOT_VERIFIED")
+            );
+        }
+
+        blockers.add("MULTIPLE_INITIAL_CANDIDATES");
+        blockers.add("NO_VERIFIED_CANDIDATE_DIFFERENTIATION");
+
+        var visualPending = analysis.evidenceReadiness().getOrDefault(
+                "VISUAL_DEFINITION_PENDING",
+                Set.of()
+        );
+
+        if (!visualPending.isEmpty()) {
+            blockers.add("VISUAL_EVIDENCE_NOT_READY");
+        }
+
+        var attributePending = analysis.evidenceReadiness().getOrDefault(
+                "ATTRIBUTE_MAPPING_PENDING",
+                Set.of()
+        );
+
+        if (!attributePending.isEmpty()) {
+            blockers.add("ATTRIBUTE_MAPPING_INCOMPLETE");
+        }
+
+        blockers.add("FINAL_CLASSIFICATION_RULE_NOT_VERIFIED");
+
+        return new SimpleResultDecision(
+                "UNRESOLVED",
+                candidates,
+                null,
+                null,
+                blockers
+        );
     }
 
 }

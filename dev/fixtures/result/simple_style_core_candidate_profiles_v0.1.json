@@ -1,0 +1,122 @@
+{
+  "version": "0.1",
+  "definitionId": "22222222-2222-4222-8222-222222222222",
+  "status": "EXPERIMENTAL",
+  "purpose": "SIMPLE_STYLE_CORE_CANDIDATE_PROFILES",
+
+  "candidateProfiles": [
+    {
+      "candidateId": "R01",
+      "name": "Minimal",
+      "status": "PROPOSED",
+
+      "styleHypothesis": {
+        "primaryFocus": "REDUCED_VISUAL_COMPLEXITY",
+        "description": "장식 요소의 절제와 전체적인 시각적 정돈을 중심으로 하는 스타일 가설"
+      },
+
+      "attributeRelations": [
+        {
+          "questionId": "Q04",
+          "optionId": "P01",
+          "relation": "SHARED_SUPPORT",
+          "note": "무지·솔리드 선호는 Minimal과 Modern 모두에서 나타날 수 있다."
+        },
+        {
+          "questionId": "Q03",
+          "optionId": "S02",
+          "relation": "COMPATIBLE",
+          "note": "레귤러핏은 Minimal과 양립 가능하지만 고유한 특징은 아니다."
+        },
+        {
+          "questionId": "Q03",
+          "optionId": "S03",
+          "relation": "COMPATIBLE",
+          "note": "릴랙스드핏도 장식이 절제된 Minimal 스타일로 구성될 수 있다."
+        },
+        {
+          "questionId": "Q03",
+          "optionId": "S04",
+          "relation": "COMPATIBLE",
+          "note": "오버사이즈핏 자체만으로 Minimal 여부를 배제하거나 확정할 수 없다."
+        },
+        {
+          "questionId": "Q04",
+          "optionId": "P04",
+          "relation": "COMPATIBLE",
+          "note": "작은 로고나 그래픽의 존재만으로 Minimal과 충돌한다고 볼 수 없다."
+        }
+      ]
+    },
+    {
+      "candidateId": "R02",
+      "name": "Modern",
+      "status": "PROPOSED",
+
+      "styleHypothesis": {
+        "primaryFocus": "CONTEMPORARY_STRUCTURE",
+        "description": "현대적인 실루엣 구성과 비율의 의도적인 표현을 중심으로 하는 스타일 가설"
+      },
+
+      "attributeRelations": [
+        {
+          "questionId": "Q04",
+          "optionId": "P01",
+          "relation": "SHARED_SUPPORT",
+          "note": "무지·솔리드 선호는 Modern에서도 나타날 수 있어 단독 구별 근거가 아니다."
+        },
+        {
+          "questionId": "Q03",
+          "optionId": "S05",
+          "relation": "COMPATIBLE",
+          "note": "짧고 컴팩트한 실루엣은 Modern의 한 표현일 수 있지만 고유한 속성은 아니다."
+        },
+        {
+          "questionId": "Q03",
+          "optionId": "S03",
+          "relation": "COMPATIBLE",
+          "note": "릴랙스드핏은 현대적인 비율 구성에도 활용될 수 있다."
+        },
+        {
+          "questionId": "Q03",
+          "optionId": "S04",
+          "relation": "COMPATIBLE",
+          "note": "오버사이즈핏은 Modern에서도 나타날 수 있지만 단독 구별 근거는 아니다."
+        },
+        {
+          "questionId": "Q04",
+          "optionId": "P04",
+          "relation": "COMPATIBLE",
+          "note": "작은 로고나 그래픽은 Modern과 양립 가능하지만 고유한 특징은 아니다."
+        }
+      ]
+    }
+  ],
+
+  "discriminationHypotheses": [
+    {
+      "hypothesisId": "H01",
+      "focus": "VISUAL_COMPLEXITY",
+      "description": "장식과 시각적 정보량의 차이가 후보 구별에 도움이 되는지 검증한다.",
+      "status": "UNVERIFIED",
+      "requires": ["VERIFIED_OUTFIT_ATTRIBUTES"]
+    },
+    {
+      "hypothesisId": "H02",
+      "focus": "SILHOUETTE_STRUCTURE",
+      "description": "실루엣 자체보다 비율과 구조를 구성하는 방식이 후보 구별에 도움이 되는지 검증한다.",
+      "status": "UNVERIFIED",
+      "requires": ["VERIFIED_COMPARISON_ATTRIBUTES"]
+    }
+  ],
+
+  "constraints": {
+    "proposalOnly": true,
+    "allowFinalClassification": false,
+    "assignsScore": false,
+    "compatibleDoesNotMeanDistinctive": true,
+    "doNotInferNegativeEvidence": true,
+    "doNotTreatAbsenceAsDislike": true,
+    "requireVerifiedEvidenceForDiscrimination": true
+  }
+}

@@ -306,4 +306,127 @@ class StyleCoreCandidateServiceIntegrationTest {
         );
     }
 
+    // DB에 저장된 Simple 세션의 후보 매칭 결과가
+    // 공통·차별 근거 비교까지 정상 연결되는지 확인한다.
+    @Test
+    void comparesCandidateEvidenceFromActualSavedSession() {
+
+        StyleCoreCandidateService service =
+                new StyleCoreCandidateService(
+                        observationService,
+                        mapper
+                );
+
+        var matches = service.matchSimpleAttributesFromSession(
+                MEMBER_ID,
+                SESSION_ID
+        );
+
+        var comparison =
+                service.compareSimpleCandidateEvidenceFromSession(
+                        MEMBER_ID,
+                        SESSION_ID
+                );
+
+        var expected =
+                com.tastedna.scoring.application
+                        .SimpleCandidateAttributeMatcher
+                        .compareEvidence(matches);
+
+        assertEquals(
+                expected,
+                comparison
+        );
+    }
+
+    // 실제 저장된 Simple 응답을 현재 실험용 판별 알고리즘에 적용한다.
+    // 결과를 출력하여 공통 근거와 차별 근거의 실질적인 분포를 확인한다.
+    @Test
+    void inspectsActualSimpleAttributeSignals() {
+
+        StyleCoreCandidateService service =
+                new StyleCoreCandidateService(
+                        observationService,
+                        mapper
+                );
+
+        var assessment =
+                service.assessSimpleAttributeSignalsFromSession(
+                        MEMBER_ID,
+                        SESSION_ID
+                );
+
+        System.out.println("===== SIMPLE SIGNAL INSPECTION =====");
+        System.out.println(
+                "Status: " + assessment.status()
+        );
+        System.out.println(
+                "Provisional lead: "
+                        + assessment.provisionalLeadCandidate()
+        );
+        System.out.println(
+                "Common evidence: "
+                        + assessment.evidence().commonSelections()
+        );
+        System.out.println(
+                "Distinctive evidence: "
+                        + assessment.evidence().distinctiveSelections()
+        );
+        System.out.println("====================================");
+
+        assertTrue(
+                java.util.Set.of(
+                        "NO_DIFFERENTIATION",
+                        "PROVISIONAL_LEAD",
+                        "COMPETING_SIGNALS"
+                ).contains(assessment.status())
+        );
+
+        var profile = service.buildSimpleObservationProfile(
+                MEMBER_ID,
+                SESSION_ID
+        );
+
+        System.out.println("===== SIMPLE RAW SELECTIONS =====");
+
+        profile.observationsByType().forEach((type, observations) -> {
+            observations.stream()
+                    .filter(observation ->
+                            "EXPLICIT_SELECTION".equals(
+                                    observation.evidence()
+                            )
+                    )
+                    .forEach(observation ->
+                            System.out.println(
+                                    observation.questionId()
+                                            + " : "
+                                            + observation.optionId()
+                                            + " ["
+                                            + type
+                                            + "]"
+                            )
+                    );
+        });
+
+        System.out.println("===============================");
+
+        // 실제 Simple 응답과 R01·R02 후보 프로필의 관계를 확인한다.
+        var review = service.reviewSimpleCandidateProfilesFromSession(
+                MEMBER_ID,
+                SESSION_ID
+        );
+
+        System.out.println("===== SIMPLE CANDIDATE PROFILE REVIEW =====");
+        System.out.println(
+                "Shared support: " + review.sharedSupport()
+        );
+        System.out.println(
+                "Compatible: " + review.compatible()
+        );
+        System.out.println(
+                "Unmapped: " + review.unmapped()
+        );
+        System.out.println("==========================================");
+    }
+
 }
