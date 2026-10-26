@@ -253,4 +253,109 @@ class StyleCoreCandidateExtractorTest {
         );
     }
 
+    // Simple Q02의 명시적 선택으로 생성된 후보에 원본 관측 근거를 연결한다.
+    // 질문·선택지·관측 유형·답변 Revision이 손실되지 않아야 한다.
+    @Test
+    void extractsCandidateEvidenceFromExplicitQ02Selections()
+            throws Exception {
+
+        JsonNode observations = mapper.readTree("""
+                {
+                  "DIRECT_FASHION_LOOK_PREFERENCE": [
+                    {
+                      "definitionId": "%s",
+                      "questionId": "Q02",
+                      "optionId": "R01",
+                      "observedValue": "R01",
+                      "evidence": "EXPLICIT_SELECTION",
+                      "answerRevision": 3
+                    },
+                    {
+                      "definitionId": "%s",
+                      "questionId": "Q02",
+                      "optionId": "R02",
+                      "observedValue": "R02",
+                      "evidence": "EXPLICIT_SELECTION",
+                      "answerRevision": 3
+                    }
+                  ]
+                }
+                """.formatted(DEFINITION_ID, DEFINITION_ID));
+
+        var results = StyleCoreCandidateExtractor.extractWithEvidence(
+                observations,
+                loadMapping()
+        );
+
+        assertEquals(2, results.size());
+
+        var evidenceByCandidate = new java.util.HashMap<
+                String,
+                com.tastedna.scoring.application.ResultCandidateEvidence
+                >();
+
+        for (var result : results) {
+            evidenceByCandidate.put(result.candidateId(), result);
+        }
+
+        assertEquals(
+                Set.of("R01", "R02"),
+                evidenceByCandidate.keySet()
+        );
+
+        for (String candidateId : Set.of("R01", "R02")) {
+            var sources = evidenceByCandidate
+                    .get(candidateId)
+                    .sources();
+
+            assertEquals(1, sources.size());
+
+            var source = sources.getFirst();
+
+            assertEquals("Q02", source.questionId());
+            assertEquals(candidateId, source.optionId());
+            assertEquals(
+                    "DIRECT_FASHION_LOOK_PREFERENCE",
+                    source.observationType()
+            );
+            assertEquals(
+                    "EXPLICIT_SELECTION",
+                    source.evidenceType()
+            );
+            assertEquals(3L, source.answerRevision());
+        }
+    }
+
+    // 실제 답변 Revision이 없으면 근거 추적이 불가능하므로 거부한다.
+    @Test
+    void rejectsCandidateEvidenceWithoutAnswerRevision()
+            throws Exception {
+
+        JsonNode observations = mapper.readTree("""
+                {
+                  "DIRECT_FASHION_LOOK_PREFERENCE": [
+                    {
+                      "definitionId": "%s",
+                      "questionId": "Q02",
+                      "optionId": "R01",
+                      "evidence": "EXPLICIT_SELECTION"
+                    }
+                  ]
+                }
+                """.formatted(DEFINITION_ID));
+
+        var exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> StyleCoreCandidateExtractor.extractWithEvidence(
+                        observations,
+                        loadMapping()
+                )
+        );
+
+        assertEquals(
+                "INVALID_EVIDENCE_REVISION",
+                exception.getMessage()
+        );
+    }
+
 }

@@ -2,10 +2,7 @@ package com.tastedna.scoring.application;
 
 import tools.jackson.databind.JsonNode;
 
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 // 사용자의 직접 스타일 선호 관측을 RESULT 초기 후보에 연결한다.
 // 매핑 규칙으로 후보만 추출하며, 점수 계산이나 최종 RESULT 선정은 수행하지 않는다.
@@ -180,4 +177,86 @@ public final class StyleCoreCandidateExtractor {
 
         return Set.copyOf(candidates);
     }
+
+    // 기존 후보 추출 기준을 유지하면서 후보별 직접 관측 근거를 반환한다.
+    // 후보 선정에 사용된 Q02 명시적 선택만 근거로 연결한다.
+    public static List<ResultCandidateEvidence> extractWithEvidence(
+            JsonNode rawObservations,
+            JsonNode mapping
+    ) {
+        Set<String> candidates = extract(rawObservations, mapping);
+
+        Map<String, String> candidateByOption = new LinkedHashMap<>();
+
+        for (JsonNode rule : mapping.get("rules")) {
+            candidateByOption.put(
+                    rule.get("optionId").stringValue(),
+                    rule.get("candidateId").stringValue()
+            );
+        }
+
+        Map<String, List<ResultCandidateEvidence.EvidenceSource>>
+                sourcesByCandidate = new LinkedHashMap<>();
+
+        for (String candidate : candidates) {
+            sourcesByCandidate.put(candidate, new ArrayList<>());
+        }
+
+        JsonNode observations = rawObservations.get(
+                "DIRECT_FASHION_LOOK_PREFERENCE"
+        );
+
+        if (observations != null) {
+            for (JsonNode observation : observations) {
+                if (!"Q02".equals(
+                        observation.get("questionId").stringValue())
+                        || !"EXPLICIT_SELECTION".equals(
+                        observation.get("evidence").stringValue())) {
+                    continue;
+                }
+
+                String optionId =
+                        observation.get("optionId").stringValue();
+
+                String candidateId =
+                        candidateByOption.get(optionId);
+
+                if (candidateId == null) {
+                    continue;
+                }
+
+                JsonNode revision = observation.get("answerRevision");
+
+                if (revision == null
+                        || !revision.canConvertToLong()
+                        || revision.longValue() < 1) {
+                    throw new IllegalArgumentException(
+                            "INVALID_EVIDENCE_REVISION"
+                    );
+                }
+
+                sourcesByCandidate.get(candidateId).add(
+                        new ResultCandidateEvidence.EvidenceSource(
+                                observation.get("questionId").stringValue(),
+                                optionId,
+                                "DIRECT_FASHION_LOOK_PREFERENCE",
+                                observation.get("evidence").stringValue(),
+                                revision.longValue()
+                        )
+                );
+            }
+        }
+
+        List<ResultCandidateEvidence> result = new ArrayList<>();
+
+        sourcesByCandidate.forEach((candidateId, sources) ->
+                result.add(new ResultCandidateEvidence(
+                        candidateId,
+                        sources
+                ))
+        );
+
+        return List.copyOf(result);
+    }
+
 }

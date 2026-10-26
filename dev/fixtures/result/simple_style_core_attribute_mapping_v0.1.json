@@ -1,0 +1,53 @@
+{
+  "version": "0.1",
+  "definitionId": "22222222-2222-4222-8222-222222222222",
+  "status": "EXPERIMENTAL",
+  "purpose": "SIMPLE_STYLE_CORE_ATTRIBUTE_MATCHING",
+
+  "candidateProfiles": [
+    {
+      "candidateId": "R01",
+      "name": "Minimal",
+      "status": "PROPOSED",
+      "supportingSelections": [
+        {
+          "questionId": "Q04",
+          "optionId": "P01",
+          "reason": "무지·솔리드 선호는 장식이 적은 스타일과 연결될 가능성이 있다."
+        },
+        {
+          "questionId": "Q03",
+          "optionId": "S02",
+          "reason": "레귤러핏은 단정한 미니멀 스타일과 양립할 수 있다."
+        }
+      ]
+    },
+    {
+      "candidateId": "R02",
+      "name": "Modern",
+      "status": "PROPOSED",
+      "supportingSelections": [
+        {
+          "questionId": "Q03",
+          "optionId": "S05",
+          "reason": "짧고 컴팩트한 실루엣은 구조적 비율을 강조하는 모던 스타일의 한 표현이 될 수 있다."
+        },
+        {
+          "questionId": "Q04",
+          "optionId": "P01",
+          "reason": "무지·솔리드 선호는 모던 스타일에서도 나타날 수 있으므로 단독 구별 근거는 아니다."
+        }
+      ]
+    }
+  ],
+
+  "constraints": {
+    "proposalOnly": true,
+    "allowFinalClassification": false,
+    "assignsScore": false,
+    "doesNotInferNegativeEvidence": true,
+    "doesNotExcludeUnlistedCandidates": true,
+    "doesNotTreatAbsenceAsDislike": true,
+    "doesNotAssumeIndependentAttributes": true
+  }
+}
