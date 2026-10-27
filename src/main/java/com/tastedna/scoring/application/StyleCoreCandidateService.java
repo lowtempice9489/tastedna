@@ -463,37 +463,26 @@ public class StyleCoreCandidateService {
         Set<String> blockers = new java.util.LinkedHashSet<>();
 
         if (candidates.isEmpty()) {
-            blockers.add("NO_INITIAL_CANDIDATE");
-
-            // Q02에서 여러 스타일을 직접 선택했으나
-            // 아직 검증된 대표 후보 판별 근거가 없는 상태다.
-            // 복수 선호 자체는 유효한 1차 결과로 유지한다.
-            blockers.add("REPRESENTATIVE_SELECTION_PENDING");
-
             return new SimpleResultDecision(
-                    "DIRECT_MULTI_PREFERENCE_RESULT",
+                    "NO_CANDIDATE",
                     candidates,
                     null,
                     null,
-                    blockers
+                    Set.of("NO_INITIAL_CANDIDATE")
             );
         }
 
-        // Q02에서 여러 스타일을 직접 선택했고,
-        // 검증된 대표 후보 구별 근거가 없는 경우다.
-        // 사용자의 복수 스타일 선호 자체는 유효한 1차 결과로 보존한다.
-        // 단일 대표 스타일 및 최종 25개 RESULT는 아직 선정하지 않는다.
+        // 사용자가 Q02에서 한 스타일만 직접 선택했다.
+        // 직접 선호 기반 결과이며 종합 판별 완료와는 구분한다.
         if (candidates.size() == 1) {
             String selectedStyle = candidates.iterator().next();
 
-            blockers.add("REPRESENTATIVE_SELECTION_PENDING");
-
             return new SimpleResultDecision(
-                    "DIRECT_MULTI_PREFERENCE_RESULT",
+                    "DIRECT_PREFERENCE_RESULT",
                     candidates,
-                    null,
-                    null,
-                    blockers
+                    selectedStyle,
+                    selectedStyle,
+                    Set.of("COMPREHENSIVE_CLASSIFICATION_NOT_VERIFIED")
             );
         }
 
@@ -654,6 +643,100 @@ public class StyleCoreCandidateService {
                 analysis,
                 supports
         );
+    }
+
+    // Simple 테스트 결과 화면에 전달할 데이터다.
+    // 개발용 차단 사유와 검증되지 않은 판별 설명은 포함하지 않는다.
+    public record SimpleResultView(
+            String status,
+            String representativeStyleId,
+            List<String> preferredStyleIds,
+            String title,
+            String description,
+            boolean comprehensiveResult
+    ) {
+        public SimpleResultView {
+            preferredStyleIds = preferredStyleIds.stream()
+                    .distinct()
+                    .sorted()
+                    .toList();
+        }
+    }
+
+    // 내부 판별 결과를 사용자에게 전달할 RESULT 형태로 변환한다.
+    // 현재는 직접 선호 기반 결과와 Q08 근거 기반 대표 후보를 구분한다.
+    public SimpleResultView buildSimpleResultView(
+            SimpleResultDecision decision
+    ) {
+        if (decision == null) {
+            throw new IllegalArgumentException(
+                    "INVALID_SIMPLE_RESULT_DECISION"
+            );
+        }
+
+        String status = decision.status();
+
+        if ("DIRECT_PREFERENCE_RESULT".equals(status)) {
+            return new SimpleResultView(
+                    status,
+                    decision.representativeCandidate(),
+                    List.copyOf(decision.eligibleCandidates()),
+                    "직접 선택한 스타일",
+                    "테스트에서 직접 선호한다고 선택한 스타일입니다.",
+                    false
+            );
+        }
+
+        if ("Q08_SUPPORTED_REPRESENTATIVE".equals(status)
+                || "REPRESENTATIVE_SELECTED".equals(status)) {
+            return new SimpleResultView(
+                    status,
+                    decision.representativeCandidate(),
+                    List.copyOf(decision.eligibleCandidates()),
+                    "현재 가장 유력한 스타일",
+                    "직접 선택한 스타일과 검증된 추가 근거를 바탕으로 선정한 대표 후보입니다.",
+                    false
+            );
+        }
+
+        if ("DIRECT_MULTI_PREFERENCE_RESULT".equals(status)) {
+            return new SimpleResultView(
+                    status,
+                    null,
+                    List.copyOf(decision.eligibleCandidates()),
+                    "여러 스타일에 끌리는 취향",
+                    "선택한 스타일이 여러 개이며, 현재 근거만으로 하나의 대표 스타일을 결정하지 않았습니다.",
+                    false
+            );
+        }
+
+        return new SimpleResultView(
+                status,
+                null,
+                List.copyOf(decision.eligibleCandidates()),
+                "취향 분석 결과를 준비하고 있습니다",
+                "현재 응답만으로는 대표 스타일을 확인하기 어렵습니다.",
+                false
+        );
+    }
+
+    // 실제 Simple 세션의 응답을 분석하여 사용자용 RESULT를 생성한다.
+    // Q08의 검증된 DB 근거를 활용하고, 내부 판별 사유는 노출하지 않는다.
+    public SimpleResultView buildSimpleResultViewFromSession(
+            String memberId,
+            String sessionId,
+            Q08ComparisonEvidenceService q08EvidenceService
+    ) {
+        // 실제 세션의 관측에서 대표 후보 선정까지 수행한다.
+        SimpleResultDecision decision =
+                decideSimpleResultFromSession(
+                        memberId,
+                        sessionId,
+                        q08EvidenceService
+                );
+
+        // 내부 판별 결과를 사용자에게 보여줄 데이터로 변환한다.
+        return buildSimpleResultView(decision);
     }
 
 }

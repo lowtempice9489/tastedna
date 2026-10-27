@@ -8,11 +8,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 // 실제 DB에 저장된 개발용 세션에서 Raw 관측과 초기 RESULT 후보 추출을 검증한다.
 // 고정된 테스트 회원과 세션 데이터가 준비돼 있다는 전제에서 실행하는 통합 테스트다.
@@ -476,6 +475,114 @@ class StyleCoreCandidateServiceIntegrationTest {
                         "Q08_SUPPORTED_REPRESENTATIVE"
                 ).contains(decision.status())
         );
+    }
+
+    // RESULT 결정의 핵심 경로를 검증한다.
+    // 후보 없음, 단일 직접 선호, 복수 직접 선호를 한 번에 확인한다.
+    @Test
+    void verifiesCoreSimpleResultDecisions() {
+
+        StyleCoreCandidateService service =
+                new StyleCoreCandidateService(
+                        observationService,
+                        mapper
+                );
+
+        var actual = service.analyzeSimpleSession(
+                MEMBER_ID,
+                SESSION_ID
+        );
+
+        // 기존 분석 정보는 유지하고 초기 후보 집합만 변경한다.
+        var noCandidate = new StyleCoreCandidateService.SimpleResultAnalysis(
+                Set.of(),
+                actual.attributeMatches(),
+                actual.evidenceComparison(),
+                actual.signalAssessment(),
+                actual.profileReview(),
+                actual.evidenceReadiness()
+        );
+
+        var singleCandidate = new StyleCoreCandidateService.SimpleResultAnalysis(
+                Set.of("R01"),
+                actual.attributeMatches(),
+                actual.evidenceComparison(),
+                actual.signalAssessment(),
+                actual.profileReview(),
+                actual.evidenceReadiness()
+        );
+
+        var multipleCandidates = actual;
+
+        var none = service.decideSimpleResult(noCandidate);
+        var single = service.decideSimpleResult(singleCandidate);
+        var multiple = service.decideWithQ08Evidence(
+                multipleCandidates,
+                java.util.List.of()
+        );
+
+        assertEquals("NO_CANDIDATE", none.status());
+        assertEquals(null, none.finalResult());
+
+        assertEquals("DIRECT_PREFERENCE_RESULT", single.status());
+        assertEquals("R01", single.representativeCandidate());
+        assertEquals("R01", single.finalResult());
+
+        assertEquals(
+                "DIRECT_MULTI_PREFERENCE_RESULT",
+                multiple.status()
+        );
+        assertEquals(Set.of("R01", "R02"), multiple.eligibleCandidates());
+        assertEquals(null, multiple.finalResult());
+    }
+
+    @Test
+    void buildsUserFacingSimpleResultFromActualSession() {
+
+        StyleCoreCandidateService service =
+                new StyleCoreCandidateService(
+                        observationService,
+                        mapper
+                );
+
+        var result = service.buildSimpleResultViewFromSession(
+                MEMBER_ID,
+                SESSION_ID,
+                q08EvidenceService
+        );
+
+        System.out.println("===== SIMPLE USER RESULT =====");
+        System.out.println("Status: " + result.status());
+        System.out.println("Title: " + result.title());
+        System.out.println("Description: " + result.description());
+        System.out.println(
+                "Preferred Styles: " + result.preferredStyleIds()
+        );
+        System.out.println(
+                "Representative: " + result.representativeStyleId()
+        );
+        System.out.println(
+                "Comprehensive: " + result.comprehensiveResult()
+        );
+        System.out.println("==============================");
+
+        assertEquals(
+                List.of("R01", "R02"),
+                result.preferredStyleIds()
+        );
+
+        assertEquals(
+                "DIRECT_MULTI_PREFERENCE_RESULT",
+                result.status()
+        );
+
+        assertEquals(
+                "여러 스타일에 끌리는 취향",
+                result.title()
+        );
+
+        assertNull(result.representativeStyleId());
+        assertFalse(result.comprehensiveResult());
     }
 
 }
