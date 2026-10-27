@@ -465,8 +465,13 @@ public class StyleCoreCandidateService {
         if (candidates.isEmpty()) {
             blockers.add("NO_INITIAL_CANDIDATE");
 
+            // Q02에서 여러 스타일을 직접 선택했으나
+            // 아직 검증된 대표 후보 판별 근거가 없는 상태다.
+            // 복수 선호 자체는 유효한 1차 결과로 유지한다.
+            blockers.add("REPRESENTATIVE_SELECTION_PENDING");
+
             return new SimpleResultDecision(
-                    "NO_CANDIDATE",
+                    "DIRECT_MULTI_PREFERENCE_RESULT",
                     candidates,
                     null,
                     null,
@@ -474,18 +479,21 @@ public class StyleCoreCandidateService {
             );
         }
 
-        // Q02에서 직접 선호한 스타일이 하나라면
-        // 다른 속성을 임의로 추론하지 않고 대표 후보로 지정한다.
+        // Q02에서 여러 스타일을 직접 선택했고,
+        // 검증된 대표 후보 구별 근거가 없는 경우다.
+        // 사용자의 복수 스타일 선호 자체는 유효한 1차 결과로 보존한다.
+        // 단일 대표 스타일 및 최종 25개 RESULT는 아직 선정하지 않는다.
         if (candidates.size() == 1) {
-            String representativeCandidate =
-                    candidates.iterator().next();
+            String selectedStyle = candidates.iterator().next();
+
+            blockers.add("REPRESENTATIVE_SELECTION_PENDING");
 
             return new SimpleResultDecision(
-                    "REPRESENTATIVE_SELECTED",
+                    "DIRECT_MULTI_PREFERENCE_RESULT",
                     candidates,
-                    representativeCandidate,
                     null,
-                    Set.of("FINAL_CLASSIFICATION_RULE_NOT_VERIFIED")
+                    null,
+                    blockers
             );
         }
 
@@ -537,6 +545,114 @@ public class StyleCoreCandidateService {
                 null,
                 null,
                 blockers
+        );
+    }
+
+    // 검증된 Q08 후보 지지 근거를 이용해 복수 후보의 대표 스타일을 평가한다.
+    // 한 후보에만 긍정 근거가 관측된 경우 1차 대표 후보를 선정한다.
+    // 단, 다른 후보를 부정하거나 최종 종합 RESULT를 확정하지 않는다.
+    public SimpleResultDecision decideWithQ08Evidence(
+            SimpleResultAnalysis analysis,
+            List<Q08ComparisonEvidenceService.CandidateSupport> supports
+    ) {
+        if (analysis == null || supports == null) {
+            throw new IllegalArgumentException(
+                    "INVALID_Q08_RESULT_INPUT"
+            );
+        }
+
+        SimpleResultDecision baseline =
+                decideSimpleResult(analysis);
+
+        Set<String> candidates = analysis.initialCandidates();
+
+        // 후보가 하나 이하라면 기존 직접 선호 판별 결과를 유지한다.
+        if (candidates.size() <= 1) {
+            return baseline;
+        }
+
+        Set<String> supportedCandidates =
+                new java.util.LinkedHashSet<>();
+
+        for (var support : supports) {
+            if (support == null) {
+                throw new IllegalArgumentException(
+                        "INVALID_Q08_RESULT_INPUT"
+                );
+            }
+
+            if (candidates.contains(support.candidateId())) {
+                supportedCandidates.add(support.candidateId());
+            }
+        }
+
+        // 검증된 Q08 지지 근거가 정확히 한 후보에만 존재한다.
+        if (supportedCandidates.size() == 1) {
+            String representative =
+                    supportedCandidates.iterator().next();
+
+            return new SimpleResultDecision(
+                    "Q08_SUPPORTED_REPRESENTATIVE",
+                    candidates,
+                    representative,
+                    null,
+                    Set.of("COMPREHENSIVE_CLASSIFICATION_NOT_VERIFIED")
+            );
+        }
+
+        // 둘 이상의 후보가 지지되거나 지지 근거가 없다면
+        // 현재 정책으로는 대표 후보를 선정하지 않는다.
+        // 복수 후보에 대한 검증된 Q08 지지 근거가 없거나
+        // 여러 후보를 동시에 지지하는 경우다.
+        // 대표 후보는 정하지 않지만 복수 직접 선호는 유지한다.
+        Set<String> remainingBlockers =
+                new java.util.LinkedHashSet<>(baseline.blockers());
+
+        remainingBlockers.add("REPRESENTATIVE_SELECTION_PENDING");
+
+        return new SimpleResultDecision(
+                "DIRECT_MULTI_PREFERENCE_RESULT",
+                candidates,
+                null,
+                null,
+                remainingBlockers
+        );
+    }
+
+    // 실제 Simple 세션을 분석하고 DB에 검증된 Q08 근거를 결합한다.
+    // 검증 근거가 충분하지 않으면 기존 직접 선호 결과를 유지한다.
+    public SimpleResultDecision decideSimpleResultFromSession(
+            String memberId,
+            String sessionId,
+            Q08ComparisonEvidenceService q08EvidenceService
+    ) {
+        if (q08EvidenceService == null) {
+            throw new IllegalArgumentException(
+                    "INVALID_Q08_EVIDENCE_SERVICE"
+            );
+        }
+
+        // 기존 통합 분석을 이용해 Q02 초기 후보와 속성 관계를 확인한다.
+        SimpleResultAnalysis analysis = analyzeSimpleSession(
+                memberId,
+                sessionId
+        );
+
+        // 단일 후보 또는 후보 없음은 Q08 비교 없이 처리한다.
+        if (analysis.initialCandidates().size() <= 1) {
+            return decideSimpleResult(analysis);
+        }
+
+        // Q08 DB 데이터가 검증된 경우에만 후보 지지 근거를 가져온다.
+        var supports = q08EvidenceService.collectCandidateSupport(
+                memberId,
+                sessionId,
+                analysis.initialCandidates()
+        );
+
+        return decideWithQ08Evidence(
+                analysis,
+                supports
         );
     }
 

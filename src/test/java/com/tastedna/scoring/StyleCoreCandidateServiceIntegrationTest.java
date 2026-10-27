@@ -1,5 +1,6 @@
 package com.tastedna.scoring;
 
+import com.tastedna.scoring.application.Q08ComparisonEvidenceService;
 import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.scoring.application.StyleCoreCandidateService;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,9 @@ class StyleCoreCandidateServiceIntegrationTest {
 
     @Autowired
     private SessionObservationService observationService;
+
+    @Autowired
+    private Q08ComparisonEvidenceService q08EvidenceService;
 
     @Autowired
     private JsonMapper mapper;
@@ -427,6 +431,51 @@ class StyleCoreCandidateServiceIntegrationTest {
                 "Unmapped: " + review.unmapped()
         );
         System.out.println("==========================================");
+    }
+
+    // 실제 Simple 응답에서 Q08 DB 기반 판별까지 정상 실행되는지 확인한다.
+    @Test
+    void decidesSimpleResultUsingActualSession() {
+
+        StyleCoreCandidateService service =
+                new StyleCoreCandidateService(
+                        observationService,
+                        mapper
+                );
+
+        var decision = service.decideSimpleResultFromSession(
+                MEMBER_ID,
+                SESSION_ID,
+                q08EvidenceService
+        );
+
+        System.out.println("===== SIMPLE RESULT DECISION =====");
+        System.out.println("Status: " + decision.status());
+        System.out.println(
+                "Candidates: " + decision.eligibleCandidates()
+        );
+        System.out.println(
+                "Representative: " + decision.representativeCandidate()
+        );
+        System.out.println(
+                "Final RESULT: " + decision.finalResult()
+        );
+        System.out.println(
+                "Blockers: " + decision.blockers()
+        );
+        System.out.println("==================================");
+
+        assertEquals(
+                Set.of("R01", "R02"),
+                decision.eligibleCandidates()
+        );
+
+        assertTrue(
+                Set.of(
+                        "DIRECT_MULTI_PREFERENCE_RESULT",
+                        "Q08_SUPPORTED_REPRESENTATIVE"
+                ).contains(decision.status())
+        );
     }
 
 }
