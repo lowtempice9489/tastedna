@@ -1,5 +1,6 @@
 package com.tastedna.scoring.application;
 
+import com.tastedna.scoring.persistence.SimpleAttributeMappingRepository;
 import com.tastedna.scoring.persistence.StyleCoreDirectMappingRepository;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
@@ -19,20 +20,78 @@ public class StyleCoreCandidateService {
     private final SessionObservationService observationService;
     private final JsonMapper mapper;
     private final StyleCoreDirectMappingRepository mappingRepository;
+    private final SimpleAttributeMappingRepository attributeMappingRepository;
 
-    // Spring이 관측 서비스, JSON 변환 도구, DB 매핑 조회기를 주입한다.
+    // Spring이 DB 매핑 조회기를 포함한 서비스 의존성을 주입한다.
     public StyleCoreCandidateService(
             SessionObservationService observationService,
             JsonMapper mapper,
-            StyleCoreDirectMappingRepository mappingRepository
+            StyleCoreDirectMappingRepository mappingRepository,
+            SimpleAttributeMappingRepository attributeMappingRepository
     ) {
         this.observationService = observationService;
         this.mapper = mapper;
         this.mappingRepository = mappingRepository;
+        this.attributeMappingRepository = attributeMappingRepository;
     }
 
-    // DB의 Q02 매핑을 기존 후보 추출기가 사용하는 형태로 변환한다.
-    // JSON 파일은 읽지 않으며, 후보 판별 규칙은 기존 추출기에 위임한다.
+    // DB의 실험용 속성 근거를 기존 Matcher 입력 형식으로 구성한다.
+    // 검증되지 않은 근거는 최종 분류 근거로 승격하지 않는다.
+    private JsonNode loadAttributeMapping() {
+        String definitionId = "22222222-2222-4222-8222-222222222222";
+
+        var rows = attributeMappingRepository
+                .findByIdDefinitionIdOrderByIdCandidateIdAscIdQuestionIdAscIdOptionIdAsc(
+                        definitionId
+                );
+
+        if (rows.isEmpty()) {
+            throw new IllegalStateException(
+                    "SIMPLE_ATTRIBUTE_MAPPING_NOT_FOUND"
+            );
+        }
+
+        // 현재 승인된 데이터는 실험용 근거뿐이다.
+        // 검증 상태가 혼합되어 있으면 임의로 해석하지 않는다.
+        if (rows.stream().anyMatch(row ->
+                !"EXPERIMENTAL".equals(row.getVerificationStatus()))) {
+            throw new IllegalStateException(
+                    "SIMPLE_ATTRIBUTE_MAPPING_STATUS_UNSUPPORTED"
+            );
+        }
+
+        Map<String, List<Map<String, String>>> selectionsByCandidate =
+                new java.util.LinkedHashMap<>();
+
+        for (var row : rows) {
+            selectionsByCandidate
+                    .computeIfAbsent(
+                            row.getId().getCandidateId(),
+                            ignored -> new java.util.ArrayList<>()
+                    )
+                    .add(Map.of(
+                            "questionId", row.getId().getQuestionId(),
+                            "optionId", row.getId().getOptionId(),
+                            "reason", row.getReason()
+                    ));
+        }
+
+        var candidateProfiles = selectionsByCandidate.entrySet()
+                .stream()
+                .map(entry -> Map.of(
+                        "candidateId", entry.getKey(),
+                        "supportingSelections", entry.getValue()
+                ))
+                .toList();
+
+        return mapper.valueToTree(Map.of(
+                "status", "EXPERIMENTAL",
+                "candidateProfiles", candidateProfiles
+        ));
+    }
+
+    // DB의 Q02 직접 선호 매핑을 기존 후보 추출기 입력으로 변환한다.
+    // 직접 선택한 스타일만 연결하며 최종 RESULT를 확정하지 않는다.
     private JsonNode loadDirectMapping() {
         String definitionId = "22222222-2222-4222-8222-222222222222";
 
@@ -194,36 +253,24 @@ public class StyleCoreCandidateService {
                         sessionId
                 );
 
-        try {
-            JsonNode mapping = mapper.readTree(
-                    Files.readString(Path.of(
-                            "dev", "fixtures", "result",
-                            "simple_style_core_attribute_mapping_v0.1.json"
-                    ))
-            );
+        JsonNode mapping = loadAttributeMapping();
 
-            // Q02에서 실제 선택한 초기 후보만 실험용 속성 매칭 대상에 포함한다.
-            // 매핑 파일에 존재한다는 이유만으로 미선택 후보를 추가하지 않는다.
-            Set<String> eligibleCandidates = extractFromSession(
-                    memberId,
-                    sessionId
-            );
+        // Q02에서 실제 선택한 초기 후보만 실험용 속성 매칭 대상에 포함한다.
+        // 매핑 파일에 존재한다는 이유만으로 미선택 후보를 추가하지 않는다.
+        Set<String> eligibleCandidates = extractFromSession(
+                memberId,
+                sessionId
+        );
 
-            return SimpleCandidateAttributeMatcher.match(
-                            profile,
-                            mapping
-                    ).stream()
-                    .filter(result -> eligibleCandidates.contains(
-                            result.candidateId()
-                    ))
-                    .toList();
+        return SimpleCandidateAttributeMatcher.match(
+                        profile,
+                        mapping
+                ).stream()
+                .filter(result -> eligibleCandidates.contains(
+                        result.candidateId()
+                ))
+                .toList();
 
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException(
-                    "ATTRIBUTE_MAPPING_LOAD_FAILED",
-                    e
-            );
-        }
     }
 
     // 실제 Simple 세션의 초기 후보들 사이에서 공통·차별 근거를 구분한다.
@@ -361,12 +408,7 @@ public class StyleCoreCandidateService {
             JsonNode directMapping = loadDirectMapping();
 
             // 실험용 속성 매핑은 아직 기존 설정을 사용한다.
-            JsonNode attributeMapping = mapper.readTree(
-                    Files.readString(Path.of(
-                            "dev", "fixtures", "result",
-                            "simple_style_core_attribute_mapping_v0.1.json"
-                    ))
-            );
+            JsonNode attributeMapping = loadAttributeMapping();
 
             JsonNode candidateProfiles = mapper.readTree(
                     Files.readString(Path.of(

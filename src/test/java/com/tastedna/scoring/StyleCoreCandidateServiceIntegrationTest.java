@@ -3,6 +3,7 @@ package com.tastedna.scoring;
 import com.tastedna.scoring.application.Q08ComparisonEvidenceService;
 import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.scoring.application.StyleCoreCandidateService;
+import com.tastedna.scoring.persistence.SimpleAttributeMappingRepository;
 import com.tastedna.scoring.persistence.StyleCoreDirectMappingRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +36,9 @@ class StyleCoreCandidateServiceIntegrationTest {
     private StyleCoreDirectMappingRepository mappingRepository;
 
     @Autowired
+    private SimpleAttributeMappingRepository attributeMappingRepository;
+
+    @Autowired
     private JsonMapper mapper;
 
     // 저장된 세션의 Q02 선택이 R01과 R02 후보로 연결되는지 확인한다.
@@ -46,7 +50,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         Set<String> candidates =
@@ -70,7 +75,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var assessment = service.assessFromSession(
@@ -100,7 +106,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var evidence = service.extractEvidenceFromSession(
@@ -164,7 +171,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var profile = service.buildSimpleObservationProfile(
@@ -219,7 +227,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var matches = service.matchSimpleAttributesFromSession(
@@ -289,7 +298,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         Set<String> initialCandidates = service.extractFromSession(
@@ -328,7 +338,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var matches = service.matchSimpleAttributesFromSession(
@@ -362,7 +373,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var assessment =
@@ -452,7 +464,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var decision = service.decideSimpleResultFromSession(
@@ -499,7 +512,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var actual = service.analyzeSimpleSession(
@@ -567,7 +581,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                 new StyleCoreCandidateService(
                         observationService,
                         mapper,
-                        mappingRepository
+                        mappingRepository,
+                        attributeMappingRepository
                 );
 
         var result = service.buildSimpleResultViewFromSession(
@@ -628,6 +643,36 @@ class StyleCoreCandidateServiceIntegrationTest {
                                 "R01".equals(row.optionId())
                                         || "R02".equals(row.optionId()))
                         .map(row -> row.candidateId())
+                        .toList()
+        );
+    }
+
+    // V10의 실험용 속성 근거 4개를 JPA로 조회한다.
+// 모든 근거가 미검증 상태이며, 기존 후보 매핑과 일치해야 한다.
+    @Test
+    void loadsExperimentalAttributeMappingsFromDatabase() {
+        var rows = attributeMappingRepository
+                .findByIdDefinitionIdOrderByIdCandidateIdAscIdQuestionIdAscIdOptionIdAsc(
+                        "22222222-2222-4222-8222-222222222222"
+                );
+
+        assertEquals(4, rows.size());
+
+        assertTrue(rows.stream().allMatch(row ->
+                "EXPERIMENTAL".equals(row.getVerificationStatus())
+        ));
+
+        assertEquals(
+                List.of("R01", "R01", "R02", "R02"),
+                rows.stream()
+                        .map(row -> row.getId().getCandidateId())
+                        .toList()
+        );
+
+        assertEquals(
+                List.of("S02", "P01", "S05", "P01"),
+                rows.stream()
+                        .map(row -> row.getId().getOptionId())
                         .toList()
         );
     }
