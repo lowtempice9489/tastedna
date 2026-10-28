@@ -766,6 +766,20 @@ public class StyleCoreCandidateService {
 
         String status = decision.status();
 
+        // Q02에서 확인된 직접 스타일 선호 후보가 없는 상태다.
+        // 취향이 없다고 단정하거나 검증되지 않은 후보를 생성하지 않는다.
+        if ("NO_CANDIDATE".equals(status)) {
+            return new SimpleResultView(
+                    status,
+                    null,
+                    List.of(),
+                    "아직 확인된 스타일 선호가 없어요",
+                    "현재 답변에서 직접 선택한 스타일 후보를 확인하지 못했습니다. " +
+                            "이 결과가 특정 스타일을 싫어한다는 뜻은 아닙니다.",
+                    false
+            );
+        }
+
         // Q02에서 하나의 스타일을 직접 선택한 경우다.
         // 직접 선호를 대표로 표시하지만 종합 패션 유형으로 확정하지 않는다.
         if ("DIRECT_PREFERENCE_RESULT".equals(status)) {
@@ -781,14 +795,32 @@ public class StyleCoreCandidateService {
             );
         }
 
-        if ("Q08_SUPPORTED_REPRESENTATIVE".equals(status)
-                || "REPRESENTATIVE_SELECTED".equals(status)) {
+        // 검증된 Q08 비교 근거로 대표 후보를 선정한 경우다.
+        // 종합 RESULT 확정과는 구분한다.
+        if ("Q08_SUPPORTED_REPRESENTATIVE".equals(status)) {
+            return new SimpleResultView(
+                    status,
+                    decision.representativeCandidate(),
+                    List.copyOf(decision.eligibleCandidates()),
+                    "비교 응답에서 지지된 스타일",
+                    "직접 선택한 스타일 중 Q08의 검증된 비교 근거가 " +
+                            "하나의 대표 후보를 지지했습니다. " +
+                            "다만 전체 취향을 종합해 확정한 결과는 아닙니다.",
+                    false
+            );
+        }
+
+        // 별도로 검증된 대표 후보 신호가 있는 경우다.
+        // 근거가 Q08이라고 임의로 단정하지 않는다.
+        if ("REPRESENTATIVE_SELECTED".equals(status)) {
             return new SimpleResultView(
                     status,
                     decision.representativeCandidate(),
                     List.copyOf(decision.eligibleCandidates()),
                     "현재 가장 유력한 스타일",
-                    "직접 선택한 스타일과 검증된 추가 근거를 바탕으로 선정한 대표 후보입니다.",
+                    "검증된 대표 후보 선정 근거를 바탕으로 " +
+                            "현재 가장 유력한 스타일을 표시합니다. " +
+                            "최종 종합 RESULT가 확정된 것은 아닙니다.",
                     false
             );
         }

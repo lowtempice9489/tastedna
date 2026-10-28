@@ -590,6 +590,15 @@ class StyleCoreCandidateServiceIntegrationTest {
         assertEquals("NO_CANDIDATE", none.status());
         assertEquals(null, none.finalResult());
 
+        // 직접 선호 후보가 없는 상태를 사용자에게 정확히 설명한다.
+        var noneView = service.buildSimpleResultView(none);
+
+        assertEquals("NO_CANDIDATE", noneView.status());
+        assertTrue(noneView.preferredStyleIds().isEmpty());
+        assertNull(noneView.representativeStyleId());
+        assertTrue(noneView.description().contains("직접 선택한 스타일 후보"));
+        assertFalse(noneView.comprehensiveResult());
+
         assertEquals("DIRECT_PREFERENCE_RESULT", single.status());
         assertEquals("R01", single.representativeCandidate());
         assertEquals(null, single.finalResult());
@@ -718,6 +727,54 @@ class StyleCoreCandidateServiceIntegrationTest {
                         .map(row -> row.getId().getOptionId())
                         .toList()
         );
+    }
+
+    // 대표 후보의 근거 유형에 따라 사용자 설명을 구분한다.
+// 두 경우 모두 최종 종합 RESULT로 확정하지 않는다.
+    @Test
+    void distinguishesRepresentativeResultViews() {
+        StyleCoreCandidateService service =
+                new StyleCoreCandidateService(
+                        observationService,
+                        mapper,
+                        mappingRepository,
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
+                );
+
+        var q08Decision =
+                new StyleCoreCandidateService.SimpleResultDecision(
+                        "Q08_SUPPORTED_REPRESENTATIVE",
+                        Set.of("R01", "R02"),
+                        "R01",
+                        null,
+                        Set.of("COMPREHENSIVE_CLASSIFICATION_NOT_VERIFIED")
+                );
+
+        var generalDecision =
+                new StyleCoreCandidateService.SimpleResultDecision(
+                        "REPRESENTATIVE_SELECTED",
+                        Set.of("R01", "R02"),
+                        "R02",
+                        null,
+                        Set.of("FINAL_CLASSIFICATION_RULE_NOT_VERIFIED")
+                );
+
+        var q08View = service.buildSimpleResultView(q08Decision);
+        var generalView = service.buildSimpleResultView(generalDecision);
+
+        assertEquals("Q08_SUPPORTED_REPRESENTATIVE", q08View.status());
+        assertEquals("R01", q08View.representativeStyleId());
+        assertEquals(List.of("R01", "R02"), q08View.preferredStyleIds());
+        assertTrue(q08View.description().contains("Q08"));
+        assertFalse(q08View.comprehensiveResult());
+
+        assertEquals("REPRESENTATIVE_SELECTED", generalView.status());
+        assertEquals("R02", generalView.representativeStyleId());
+        assertEquals(List.of("R01", "R02"), generalView.preferredStyleIds());
+        assertTrue(generalView.description().contains("대표 후보 선정 근거"));
+        assertFalse(generalView.comprehensiveResult());
     }
 
 }
