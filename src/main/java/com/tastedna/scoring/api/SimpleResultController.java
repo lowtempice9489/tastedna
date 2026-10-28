@@ -1,7 +1,6 @@
 package com.tastedna.scoring.api;
 
 import com.tastedna.scoring.application.Q08ComparisonEvidenceService;
-import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.scoring.application.StyleCoreCandidateService;
 import com.tastedna.scoring.domain.ResultCandidate;
 import com.tastedna.scoring.persistence.ResultCandidateRepository;
@@ -16,8 +15,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-
-import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Comparator;
 import java.util.List;
@@ -39,17 +36,13 @@ public class SimpleResultController {
 
     public SimpleResultController(
             TestSessionService sessionService,
-            SessionObservationService observationService,
-            JsonMapper mapper,
+            StyleCoreCandidateService candidateService,
             Q08ComparisonEvidenceService q08EvidenceService,
             ResultCandidateRepository candidateRepository,
             SessionAnswerRepository answerRepository
     ) {
         this.sessionService = sessionService;
-        this.candidateService = new StyleCoreCandidateService(
-                observationService,
-                mapper
-        );
+        this.candidateService = candidateService;
         this.q08EvidenceService = q08EvidenceService;
         this.candidateRepository = candidateRepository;
         this.answerRepository = answerRepository;
@@ -62,8 +55,10 @@ public class SimpleResultController {
     ) {
     }
 
-    // 기존 판별 결과와 DB 스타일 이름을 합친 API 응답.
+    // 현재 Simple RESULT API는 정식 판별 완료 전의 미리보기다.
+    // 최종 RESULT와 혼동하지 않도록 preview 상태를 명시한다.
     public record SimpleResultResponse(
+            boolean preview,
             StyleCoreCandidateService.SimpleResultView result,
             List<PreferredStyle> preferredStyles
     ) {
@@ -151,6 +146,7 @@ public class SimpleResultController {
         }
 
         return new SimpleResultResponse(
+                true,
                 result,
                 preferredStyles
         );

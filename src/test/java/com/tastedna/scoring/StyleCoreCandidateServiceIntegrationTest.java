@@ -516,17 +516,27 @@ class StyleCoreCandidateServiceIntegrationTest {
 
         var none = service.decideSimpleResult(noCandidate);
         var single = service.decideSimpleResult(singleCandidate);
+
+        // Q08 근거 적용 전후에 복수 직접 선호 상태가 유지되는지 확인한다.
+        var multipleBaseline = service.decideSimpleResult(multipleCandidates);
         var multiple = service.decideWithQ08Evidence(
                 multipleCandidates,
                 java.util.List.of()
         );
+
+        assertEquals(
+                "DIRECT_MULTI_PREFERENCE_RESULT",
+                multipleBaseline.status()
+        );
+        assertEquals(null, multipleBaseline.representativeCandidate());
+        assertEquals(null, multipleBaseline.finalResult());
 
         assertEquals("NO_CANDIDATE", none.status());
         assertEquals(null, none.finalResult());
 
         assertEquals("DIRECT_PREFERENCE_RESULT", single.status());
         assertEquals("R01", single.representativeCandidate());
-        assertEquals("R01", single.finalResult());
+        assertEquals(null, single.finalResult());
 
         assertEquals(
                 "DIRECT_MULTI_PREFERENCE_RESULT",

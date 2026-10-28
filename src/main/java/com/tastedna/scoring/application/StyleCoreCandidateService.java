@@ -1,5 +1,6 @@
 package com.tastedna.scoring.application;
 
+import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -10,7 +11,8 @@ import java.util.Map;
 import java.util.Set;
 
 // 실제 세션의 Raw 관측을 이용해 Style Core 초기 후보와 근거 준비 상태를 평가한다.
-// 후보 추출과 메타데이터 검증을 연결하지만 최종 RESULT를 결정하지는 않는다.
+// Spring Bean으로 관리하며, 최종 종합 RESULT를 확정하지는 않는다.
+@Service
 public class StyleCoreCandidateService {
 
     private final SessionObservationService observationService;
@@ -472,8 +474,8 @@ public class StyleCoreCandidateService {
             );
         }
 
-        // 사용자가 Q02에서 한 스타일만 직접 선택했다.
-        // 직접 선호 기반 결과이며 종합 판별 완료와는 구분한다.
+        // Q02에서 하나의 스타일을 직접 선택한 경우다.
+        // 대표 직접 선호로 표시하되, 종합 RESULT는 확정하지 않는다.
         if (candidates.size() == 1) {
             String selectedStyle = candidates.iterator().next();
 
@@ -481,7 +483,7 @@ public class StyleCoreCandidateService {
                     "DIRECT_PREFERENCE_RESULT",
                     candidates,
                     selectedStyle,
-                    selectedStyle,
+                    null,
                     Set.of("COMPREHENSIVE_CLASSIFICATION_NOT_VERIFIED")
             );
         }
@@ -529,7 +531,7 @@ public class StyleCoreCandidateService {
         blockers.add("FINAL_CLASSIFICATION_RULE_NOT_VERIFIED");
 
         return new SimpleResultDecision(
-                "UNRESOLVED",
+                "DIRECT_MULTI_PREFERENCE_RESULT",
                 candidates,
                 null,
                 null,
