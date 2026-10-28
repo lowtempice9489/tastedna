@@ -3,6 +3,7 @@ package com.tastedna.scoring;
 import com.tastedna.scoring.application.Q08ComparisonEvidenceService;
 import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.scoring.application.StyleCoreCandidateService;
+import com.tastedna.scoring.persistence.StyleCoreDirectMappingRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,6 +32,9 @@ class StyleCoreCandidateServiceIntegrationTest {
     private Q08ComparisonEvidenceService q08EvidenceService;
 
     @Autowired
+    private StyleCoreDirectMappingRepository mappingRepository;
+
+    @Autowired
     private JsonMapper mapper;
 
     // 저장된 세션의 Q02 선택이 R01과 R02 후보로 연결되는지 확인한다.
@@ -41,7 +45,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         Set<String> candidates =
@@ -64,7 +69,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var assessment = service.assessFromSession(
@@ -93,7 +99,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var evidence = service.extractEvidenceFromSession(
@@ -156,7 +163,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var profile = service.buildSimpleObservationProfile(
@@ -210,7 +218,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var matches = service.matchSimpleAttributesFromSession(
@@ -279,7 +288,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         Set<String> initialCandidates = service.extractFromSession(
@@ -317,7 +327,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var matches = service.matchSimpleAttributesFromSession(
@@ -350,7 +361,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var assessment =
@@ -439,7 +451,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var decision = service.decideSimpleResultFromSession(
@@ -485,7 +498,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var actual = service.analyzeSimpleSession(
@@ -552,7 +566,8 @@ class StyleCoreCandidateServiceIntegrationTest {
         StyleCoreCandidateService service =
                 new StyleCoreCandidateService(
                         observationService,
-                        mapper
+                        mapper,
+                        mappingRepository
                 );
 
         var result = service.buildSimpleResultViewFromSession(
@@ -593,6 +608,28 @@ class StyleCoreCandidateServiceIntegrationTest {
 
         assertNull(result.representativeStyleId());
         assertFalse(result.comprehensiveResult());
+    }
+
+    // Simple Q02의 직접 선호 매핑이 DB에 등록되어 있는지 확인한다.
+// 후보 등록은 최종 RESULT 판별 완료를 의미하지 않는다.
+    @Test
+    void loadsDirectStyleMappingsFromDatabase() {
+        var mappings = mappingRepository.findByDefinitionAndQuestion(
+                "22222222-2222-4222-8222-222222222222",
+                "Q02"
+        );
+
+        assertEquals(12, mappings.size());
+
+        assertEquals(
+                List.of("R01", "R02"),
+                mappings.stream()
+                        .filter(row ->
+                                "R01".equals(row.optionId())
+                                        || "R02".equals(row.optionId()))
+                        .map(row -> row.candidateId())
+                        .toList()
+        );
     }
 
 }

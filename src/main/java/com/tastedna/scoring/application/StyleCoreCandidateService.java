@@ -1,5 +1,6 @@
 package com.tastedna.scoring.application;
 
+import com.tastedna.scoring.persistence.StyleCoreDirectMappingRepository;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -17,15 +18,46 @@ public class StyleCoreCandidateService {
 
     private final SessionObservationService observationService;
     private final JsonMapper mapper;
+    private final StyleCoreDirectMappingRepository mappingRepository;
 
-    // 세션 관측 서비스와 JSON 변환 도구를 전달받아 사용한다.
-    // 관측 생성 로직을 중복 구현하지 않고 기존 서비스를 재사용한다.
+    // Spring이 관측 서비스, JSON 변환 도구, DB 매핑 조회기를 주입한다.
     public StyleCoreCandidateService(
             SessionObservationService observationService,
-            JsonMapper mapper
+            JsonMapper mapper,
+            StyleCoreDirectMappingRepository mappingRepository
     ) {
         this.observationService = observationService;
         this.mapper = mapper;
+        this.mappingRepository = mappingRepository;
+    }
+
+    // DB의 Q02 매핑을 기존 후보 추출기가 사용하는 형태로 변환한다.
+    // JSON 파일은 읽지 않으며, 후보 판별 규칙은 기존 추출기에 위임한다.
+    private JsonNode loadDirectMapping() {
+        String definitionId = "22222222-2222-4222-8222-222222222222";
+
+        var rules = mappingRepository
+                .findByDefinitionAndQuestion(definitionId, "Q02")
+                .stream()
+                .map(row -> Map.of(
+                        "optionId", row.optionId(),
+                        "candidateId", row.candidateId()
+                ))
+                .toList();
+
+        if (rules.isEmpty()) {
+            throw new IllegalStateException(
+                    "DIRECT_STYLE_MAPPING_NOT_FOUND"
+            );
+        }
+
+        return mapper.valueToTree(Map.of(
+                "sourceDefinition", "SIMPLE-V1-DRAFT",
+                "sourceDefinitionId", definitionId,
+                "sourceQuestionId", "Q02",
+                "sourceObservationType", "DIRECT_FASHION_LOOK_PREFERENCE",
+                "rules", rules
+        ));
     }
 
     // 회원의 실제 세션에서 Raw 관측을 수집하고 매핑 규칙에 따라 초기 후보를 추출한다.
@@ -34,37 +66,25 @@ public class StyleCoreCandidateService {
             String memberId,
             String sessionId
     ) {
-        try {
-            var rawObservations =
-                    observationService.collectRaw(
-                            memberId,
-                            sessionId
-                    );
+        var rawObservations =
+                observationService.collectRaw(
+                        memberId,
+                        sessionId
+                );
 
-            // 관측 서비스의 Map 결과를 후보 추출기가 사용하는 JsonNode 형태로 변환한다.
-            // 이 과정에서 후보 점수나 새로운 취향 정보를 생성하지 않는다.
-            JsonNode observations = mapper.readTree(
-                    mapper.writeValueAsString(rawObservations)
-            );
+        // 관측 서비스의 Map 결과를 후보 추출기가 사용하는 JsonNode 형태로 변환한다.
+        // 이 과정에서 후보 점수나 새로운 취향 정보를 생성하지 않는다.
+        JsonNode observations = mapper.readTree(
+                mapper.writeValueAsString(rawObservations)
+        );
 
-            JsonNode mapping = mapper.readTree(
-                    Files.readString(Path.of(
-                            "dev", "fixtures", "result",
-                            "style_core_direct_evidence_v0.1.json"
-                    ))
-            );
+        JsonNode mapping = loadDirectMapping();
 
-            return StyleCoreCandidateExtractor.extract(
-                    observations,
-                    mapping
-            );
+        return StyleCoreCandidateExtractor.extract(
+                observations,
+                mapping
+        );
 
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException(
-                    "CANDIDATE_MAPPING_LOAD_FAILED",
-                    e
-            );
-        }
     }
 
     // 실제 세션에서 초기 후보를 추출하고 Q05·Q08·Q09·Q10의 메타데이터 준비 상태를 확인한다.
