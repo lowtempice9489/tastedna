@@ -60,8 +60,8 @@ public class StyleCoreCandidateService {
         ));
     }
 
-    // 회원의 실제 세션에서 Raw 관측을 수집하고 매핑 규칙에 따라 초기 후보를 추출한다.
-    // 현재는 개발용 fixtures 파일을 읽으므로 운영 배포 시 설정 관리 방식을 변경해야 한다.
+    // 회원의 실제 세션 관측을 DB의 Q02 직접 선호 매핑과 대조한다.
+    // 직접 선택한 스타일 후보만 추출하며 최종 종합 RESULT는 확정하지 않는다.
     public Set<String> extractFromSession(
             String memberId,
             String sessionId
@@ -115,35 +115,22 @@ public class StyleCoreCandidateService {
             String memberId,
             String sessionId
     ) {
-        try {
-            var rawObservations =
-                    observationService.collectRaw(
-                            memberId,
-                            sessionId
-                    );
+        var rawObservations =
+                observationService.collectRaw(
+                        memberId,
+                        sessionId
+                );
 
-            JsonNode observations = mapper.readTree(
-                    mapper.writeValueAsString(rawObservations)
-            );
+        JsonNode observations = mapper.readTree(
+                mapper.writeValueAsString(rawObservations)
+        );
 
-            JsonNode mapping = mapper.readTree(
-                    Files.readString(Path.of(
-                            "dev", "fixtures", "result",
-                            "style_core_direct_evidence_v0.1.json"
-                    ))
-            );
+        JsonNode mapping = loadDirectMapping();
 
-            return StyleCoreCandidateExtractor.extractWithEvidence(
-                    observations,
-                    mapping
-            );
-
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException(
-                    "CANDIDATE_MAPPING_LOAD_FAILED",
-                    e
-            );
-        }
+        return StyleCoreCandidateExtractor.extractWithEvidence(
+                observations,
+                mapping
+        );
     }
 
     // 실제 Simple 세션에서 추출한 후보별 근거를 판별 설정과 대조한다.
@@ -370,13 +357,10 @@ public class StyleCoreCandidateService {
                     mapper.writeValueAsString(rawObservations)
             );
 
-            JsonNode directMapping = mapper.readTree(
-                    Files.readString(Path.of(
-                            "dev", "fixtures", "result",
-                            "style_core_direct_evidence_v0.1.json"
-                    ))
-            );
+            // Q02 직접 선호 매핑은 DB에서 조회한다.
+            JsonNode directMapping = loadDirectMapping();
 
+            // 실험용 속성 매핑은 아직 기존 설정을 사용한다.
             JsonNode attributeMapping = mapper.readTree(
                     Files.readString(Path.of(
                             "dev", "fixtures", "result",
