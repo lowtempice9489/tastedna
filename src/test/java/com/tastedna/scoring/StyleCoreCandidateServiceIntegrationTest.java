@@ -4,6 +4,8 @@ import com.tastedna.scoring.application.Q08ComparisonEvidenceService;
 import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.scoring.application.StyleCoreCandidateService;
 import com.tastedna.scoring.persistence.SimpleAttributeMappingRepository;
+import com.tastedna.scoring.persistence.SimpleCandidateProfileRepository;
+import com.tastedna.scoring.persistence.SimpleCandidateRelationRepository;
 import com.tastedna.scoring.persistence.StyleCoreDirectMappingRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +41,12 @@ class StyleCoreCandidateServiceIntegrationTest {
     private SimpleAttributeMappingRepository attributeMappingRepository;
 
     @Autowired
+    private SimpleCandidateProfileRepository profileRepository;
+
+    @Autowired
+    private SimpleCandidateRelationRepository relationRepository;
+
+    @Autowired
     private JsonMapper mapper;
 
     // 저장된 세션의 Q02 선택이 R01과 R02 후보로 연결되는지 확인한다.
@@ -51,7 +59,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         Set<String> candidates =
@@ -76,7 +86,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var assessment = service.assessFromSession(
@@ -107,7 +119,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var evidence = service.extractEvidenceFromSession(
@@ -172,7 +186,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var profile = service.buildSimpleObservationProfile(
@@ -228,7 +244,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var matches = service.matchSimpleAttributesFromSession(
@@ -299,7 +317,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         Set<String> initialCandidates = service.extractFromSession(
@@ -339,7 +359,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var matches = service.matchSimpleAttributesFromSession(
@@ -374,7 +396,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var assessment =
@@ -465,7 +489,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var decision = service.decideSimpleResultFromSession(
@@ -513,7 +539,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var actual = service.analyzeSimpleSession(
@@ -566,6 +594,16 @@ class StyleCoreCandidateServiceIntegrationTest {
         assertEquals("R01", single.representativeCandidate());
         assertEquals(null, single.finalResult());
 
+        // 단일 직접 선호도 종합 RESULT로 확정하지 않는다.
+        var singleView = service.buildSimpleResultView(single);
+
+        assertEquals("DIRECT_PREFERENCE_RESULT", singleView.status());
+        assertEquals("R01", singleView.representativeStyleId());
+        assertEquals(List.of("R01"), singleView.preferredStyleIds());
+        assertTrue(singleView.description().contains("Q02"));
+        assertTrue(singleView.description().contains("확정한 패션 유형은 아닙니다"));
+        assertFalse(singleView.comprehensiveResult());
+
         assertEquals(
                 "DIRECT_MULTI_PREFERENCE_RESULT",
                 multiple.status()
@@ -582,7 +620,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                         observationService,
                         mapper,
                         mappingRepository,
-                        attributeMappingRepository
+                        attributeMappingRepository,
+                        profileRepository,
+                        relationRepository
                 );
 
         var result = service.buildSimpleResultViewFromSession(
@@ -620,6 +660,9 @@ class StyleCoreCandidateServiceIntegrationTest {
                 "여러 스타일에 끌리는 취향",
                 result.title()
         );
+        // 사용자 설명이 Q02 직접 선호와 판별의 한계를 명시하는지 확인한다.
+        assertTrue(result.description().contains("Q02"));
+        assertTrue(result.description().contains("대표 스타일을 확정할 수 없어"));
 
         assertNull(result.representativeStyleId());
         assertFalse(result.comprehensiveResult());

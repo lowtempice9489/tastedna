@@ -1,6 +1,8 @@
 package com.tastedna.scoring.application;
 
 import com.tastedna.scoring.persistence.SimpleAttributeMappingRepository;
+import com.tastedna.scoring.persistence.SimpleCandidateProfileRepository;
+import com.tastedna.scoring.persistence.SimpleCandidateRelationRepository;
 import com.tastedna.scoring.persistence.StyleCoreDirectMappingRepository;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
@@ -21,18 +23,24 @@ public class StyleCoreCandidateService {
     private final JsonMapper mapper;
     private final StyleCoreDirectMappingRepository mappingRepository;
     private final SimpleAttributeMappingRepository attributeMappingRepository;
+    private final SimpleCandidateProfileRepository profileRepository;
+    private final SimpleCandidateRelationRepository relationRepository;
 
-    // Spring이 DB 매핑 조회기를 포함한 서비스 의존성을 주입한다.
+    // Spring이 기존 관측 서비스와 DB 매핑 조회기를 생성자로 주입한다.
     public StyleCoreCandidateService(
             SessionObservationService observationService,
             JsonMapper mapper,
             StyleCoreDirectMappingRepository mappingRepository,
-            SimpleAttributeMappingRepository attributeMappingRepository
+            SimpleAttributeMappingRepository attributeMappingRepository,
+            SimpleCandidateProfileRepository profileRepository,
+            SimpleCandidateRelationRepository relationRepository
     ) {
         this.observationService = observationService;
         this.mapper = mapper;
         this.mappingRepository = mappingRepository;
         this.attributeMappingRepository = attributeMappingRepository;
+        this.profileRepository = profileRepository;
+        this.relationRepository = relationRepository;
     }
 
     // DB의 실험용 속성 근거를 기존 Matcher 입력 형식으로 구성한다.
@@ -116,6 +124,69 @@ public class StyleCoreCandidateService {
                 "sourceQuestionId", "Q02",
                 "sourceObservationType", "DIRECT_FASHION_LOOK_PREFERENCE",
                 "rules", rules
+        ));
+    }
+
+    // DB의 제안 후보 프로필과 속성 관계를 기존 분석기 입력으로 구성한다.
+    // PROPOSED 및 COMPATIBLE 상태를 확정 판별 근거로 승격하지 않는다.
+    private JsonNode loadCandidateProfiles() {
+        String definitionId = "22222222-2222-4222-8222-222222222222";
+
+        var profiles = profileRepository
+                .findByIdDefinitionIdOrderByIdCandidateIdAsc(definitionId);
+
+        var relations = relationRepository
+                .findByIdDefinitionIdOrderByIdCandidateIdAscIdQuestionIdAscIdOptionIdAsc(
+                        definitionId
+                );
+
+        if (profiles.isEmpty() || relations.isEmpty()) {
+            throw new IllegalStateException(
+                    "SIMPLE_CANDIDATE_PROFILES_NOT_FOUND"
+            );
+        }
+
+        var relationsByCandidate = new java.util.LinkedHashMap<
+                String, List<Map<String, String>>>();
+
+        for (var relation : relations) {
+            relationsByCandidate.computeIfAbsent(
+                    relation.getId().getCandidateId(),
+                    ignored -> new java.util.ArrayList<>()
+            ).add(Map.of(
+                    "questionId", relation.getId().getQuestionId(),
+                    "optionId", relation.getId().getOptionId(),
+                    "relation", relation.getRelationType(),
+                    "note", relation.getNote()
+            ));
+        }
+
+        var candidateProfiles = new java.util.ArrayList<Map<String, Object>>();
+
+        for (var profile : profiles) {
+            if (!"PROPOSED".equals(profile.getProfileStatus())) {
+                throw new IllegalStateException(
+                        "SIMPLE_CANDIDATE_PROFILE_STATUS_UNSUPPORTED"
+                );
+            }
+
+            String candidateId = profile.getId().getCandidateId();
+
+            candidateProfiles.add(Map.of(
+                    "candidateId", candidateId,
+                    "status", profile.getProfileStatus(),
+                    "styleHypothesis", Map.of(
+                            "primaryFocus", profile.getPrimaryFocus(),
+                            "description", profile.getDescription()
+                    ),
+                    "attributeRelations",
+                    relationsByCandidate.getOrDefault(candidateId, List.of())
+            ));
+        }
+
+        return mapper.valueToTree(Map.of(
+                "status", "EXPERIMENTAL",
+                "candidateProfiles", candidateProfiles
         ));
     }
 
@@ -309,38 +380,22 @@ public class StyleCoreCandidateService {
         );
     }
 
-    // 실제 Simple 세션의 관측을 R01·R02 후보 속성 프로필과 대조한다.
-    // 공유 근거와 양립 가능한 속성, 아직 해석하지 못한 관측을 구분한다.
+    // 실제 Simple 세션의 관측을 DB의 제안 후보 프로필과 비교한다.
+    // 공유·양립 관계를 구분하며 최종 종합 RESULT는 확정하지 않는다.
     public SimpleCandidateDiscrimination.ProfileEvidenceReview
     reviewSimpleCandidateProfilesFromSession(
             String memberId,
             String sessionId
     ) {
         SimpleObservationProfile profile =
-                buildSimpleObservationProfile(
-                        memberId,
-                        sessionId
-                );
+                buildSimpleObservationProfile(memberId, sessionId);
 
-        try {
-            JsonNode candidateProfiles = mapper.readTree(
-                    Files.readString(Path.of(
-                            "dev", "fixtures", "result",
-                            "simple_style_core_candidate_profiles_v0.1.json"
-                    ))
-            );
+        JsonNode candidateProfiles = loadCandidateProfiles();
 
-            return SimpleCandidateDiscrimination.reviewCandidateProfiles(
-                    profile,
-                    candidateProfiles
-            );
-
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException(
-                    "CANDIDATE_PROFILES_LOAD_FAILED",
-                    e
-            );
-        }
+        return SimpleCandidateDiscrimination.reviewCandidateProfiles(
+                profile,
+                candidateProfiles
+        );
     }
 
     // 실제 Simple 세션에서 관측의 처리 상태를 분류한다.
@@ -399,85 +454,72 @@ public class StyleCoreCandidateService {
         SimpleObservationProfile profile =
                 new SimpleObservationProfile(rawObservations);
 
-        try {
-            JsonNode observations = mapper.readTree(
-                    mapper.writeValueAsString(rawObservations)
-            );
+        JsonNode observations = mapper.readTree(
+                mapper.writeValueAsString(rawObservations)
+        );
 
-            // Q02 직접 선호 매핑은 DB에서 조회한다.
-            JsonNode directMapping = loadDirectMapping();
+        // Q02 직접 선호 매핑은 DB에서 조회한다.
+        JsonNode directMapping = loadDirectMapping();
 
-            // 실험용 속성 매핑은 아직 기존 설정을 사용한다.
-            JsonNode attributeMapping = loadAttributeMapping();
+        // 실험용 속성 매핑은 아직 기존 설정을 사용한다.
+        JsonNode attributeMapping = loadAttributeMapping();
 
-            JsonNode candidateProfiles = mapper.readTree(
-                    Files.readString(Path.of(
-                            "dev", "fixtures", "result",
-                            "simple_style_core_candidate_profiles_v0.1.json"
-                    ))
-            );
+        JsonNode candidateProfiles = loadCandidateProfiles();
 
-            // Q02의 명시적 선택만 초기 후보로 추출한다.
-            Set<String> initialCandidates =
-                    StyleCoreCandidateExtractor.extract(
-                            observations,
-                            directMapping
-                    );
+        // Q02의 명시적 선택만 초기 후보로 추출한다.
+        Set<String> initialCandidates =
+                StyleCoreCandidateExtractor.extract(
+                        observations,
+                        directMapping
+                );
 
-            // 실제 초기 후보에 속하는 매칭 결과만 사용한다.
-            var attributeMatches =
-                    SimpleCandidateAttributeMatcher.match(
-                                    profile,
-                                    attributeMapping
-                            ).stream()
-                            .filter(candidate ->
-                                    initialCandidates.contains(
-                                            candidate.candidateId()
-                                    )
-                            )
-                            .toList();
+        // 실제 초기 후보에 속하는 매칭 결과만 사용한다.
+        var attributeMatches =
+                SimpleCandidateAttributeMatcher.match(
+                                profile,
+                                attributeMapping
+                        ).stream()
+                        .filter(candidate ->
+                                initialCandidates.contains(
+                                        candidate.candidateId()
+                                )
+                        )
+                        .toList();
 
-            // 공통·차별 근거를 분리한다.
-            var comparison =
-                    SimpleCandidateAttributeMatcher.compareEvidence(
-                            attributeMatches
-                    );
+        // 공통·차별 근거를 분리한다.
+        var comparison =
+                SimpleCandidateAttributeMatcher.compareEvidence(
+                        attributeMatches
+                );
 
-            // 매핑상의 차이가 검증된 후보 우세로 오인되지 않도록 평가한다.
-            var signalAssessment =
-                    SimpleCandidateDiscrimination.assessAttributeSignals(
-                            comparison
-                    );
+        // 매핑상의 차이가 검증된 후보 우세로 오인되지 않도록 평가한다.
+        var signalAssessment =
+                SimpleCandidateDiscrimination.assessAttributeSignals(
+                        comparison
+                );
 
-            // 후보 프로필에 정의된 공유·양립 관계를 분석한다.
-            var profileReview =
-                    SimpleCandidateDiscrimination.reviewCandidateProfiles(
-                            profile,
-                            candidateProfiles
-                    );
+        // 후보 프로필에 정의된 공유·양립 관계를 분석한다.
+        var profileReview =
+                SimpleCandidateDiscrimination.reviewCandidateProfiles(
+                        profile,
+                        candidateProfiles
+                );
 
-            // 이미 활용한 관측과 추가 정의가 필요한 관측을 구분한다.
-            var readiness =
-                    SimpleCandidateDiscrimination.classifyEvidenceReadiness(
-                            profile,
-                            profileReview
-                    );
+        // 이미 활용한 관측과 추가 정의가 필요한 관측을 구분한다.
+        var readiness =
+                SimpleCandidateDiscrimination.classifyEvidenceReadiness(
+                        profile,
+                        profileReview
+                );
 
-            return new SimpleResultAnalysis(
-                    initialCandidates,
-                    attributeMatches,
-                    comparison,
-                    signalAssessment,
-                    profileReview,
-                    readiness
-            );
-
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException(
-                    "SIMPLE_RESULT_ANALYSIS_CONFIGURATION_FAILED",
-                    e
-            );
-        }
+        return new SimpleResultAnalysis(
+                initialCandidates,
+                attributeMatches,
+                comparison,
+                signalAssessment,
+                profileReview,
+                readiness
+        );
     }
 
     // Simple RESULT의 선정 가능 상태를 표현한다.
@@ -724,13 +766,17 @@ public class StyleCoreCandidateService {
 
         String status = decision.status();
 
+        // Q02에서 하나의 스타일을 직접 선택한 경우다.
+        // 직접 선호를 대표로 표시하지만 종합 패션 유형으로 확정하지 않는다.
         if ("DIRECT_PREFERENCE_RESULT".equals(status)) {
             return new SimpleResultView(
                     status,
                     decision.representativeCandidate(),
                     List.copyOf(decision.eligibleCandidates()),
                     "직접 선택한 스타일",
-                    "테스트에서 직접 선호한다고 선택한 스타일입니다.",
+                    "Q02에서 하나의 스타일을 직접 선호한다고 선택했습니다. " +
+                            "현재 확인된 것은 직접 선택한 취향이며, " +
+                            "전체 질문을 종합해 확정한 패션 유형은 아닙니다.",
                     false
             );
         }
@@ -747,13 +793,17 @@ public class StyleCoreCandidateService {
             );
         }
 
+        // Q02에서 직접 선택한 복수 스타일만 확인된 결과다.
+        // 추가 관측의 판별 규칙이 미검증이므로 하나의 스타일로 단정하지 않는다.
         if ("DIRECT_MULTI_PREFERENCE_RESULT".equals(status)) {
             return new SimpleResultView(
                     status,
                     null,
                     List.copyOf(decision.eligibleCandidates()),
                     "여러 스타일에 끌리는 취향",
-                    "선택한 스타일이 여러 개이며, 현재 근거만으로 하나의 대표 스타일을 결정하지 않았습니다.",
+                    "Q02에서 여러 스타일을 직접 선호한다고 선택했습니다. " +
+                            "현재는 다른 질문의 관측만으로 대표 스타일을 확정할 수 없어 " +
+                            "선택한 스타일들을 함께 보여드립니다.",
                     false
             );
         }
