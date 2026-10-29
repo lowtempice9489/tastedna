@@ -43,8 +43,8 @@ public class TestSessionService {
     private final SessionAnswerRepository answerRepository;
     private final JsonMapper mapper;
 
-    // 활성 테스트 정의와 질문 목록을 조회해 새 세션을 생성한다.
-    // 동일 회원의 진행 중이거나 제출된 세션이 있으면 중복 생성을 차단한다.
+    // 진행 중인 세션의 중복 생성만 차단한다.
+    // 제출된 세션은 보존하며 새 테스트 시작을 허용한다.
     @Transactional
     public SessionResponse start(
             String memberId,
@@ -53,7 +53,7 @@ public class TestSessionService {
         boolean hasActiveSession = !sessionRepository
                 .findByMallMemberIdAndStatusIn(
                         memberId,
-                        List.of("IN_PROGRESS", "SUBMITTED")
+                        List.of("IN_PROGRESS")
                 ).isEmpty();
 
         if (hasActiveSession) {
@@ -156,7 +156,7 @@ public class TestSessionService {
         List<TestSession> activeSessions = sessionRepository
                 .findByMallMemberIdAndStatusIn(
                         memberId,
-                        List.of("IN_PROGRESS", "SUBMITTED")
+                        List.of("IN_PROGRESS")
                 );
 
         if (activeSessions.isEmpty()) {

@@ -62,14 +62,14 @@ class TestSessionServiceTest {
         );
     }
 
-    // IN_PROGRESS 또는 SUBMITTED 세션이 이미 있으면 새 세션 생성을 차단한다.
-    // 중복 세션 발견 시 테스트 정의 조회나 세션 저장을 진행하지 않아야 한다.
+    // 진행 중인 세션이 있으면 새 세션 생성을 차단한다.
+    // 제출된 세션은 새로운 테스트 시작을 방해하지 않는다.
     @Test
     void existingActiveSessionReturns409() {
 
         when(sessionRepository.findByMallMemberIdAndStatusIn(
                 eq("dev-member-001"),
-                eq(List.of("IN_PROGRESS", "SUBMITTED"))
+                eq(List.of("IN_PROGRESS"))
         )).thenReturn(List.of(mock(TestSession.class)));
 
         ResponseStatusException exception = assertThrows(
@@ -195,7 +195,7 @@ class TestSessionServiceTest {
 
         when(sessionRepository.findByMallMemberIdAndStatusIn(
                 eq("dev-member-001"),
-                eq(List.of("IN_PROGRESS", "SUBMITTED"))
+                eq(List.of("IN_PROGRESS"))
         )).thenReturn(List.of());
 
         when(definitionRepository.findByTestModeAndActiveTrue("SIMPLE"))
@@ -278,7 +278,7 @@ class TestSessionServiceTest {
 
         when(sessionRepository.findByMallMemberIdAndStatusIn(
                 "dev-member-001",
-                List.of("IN_PROGRESS", "SUBMITTED")
+                List.of("IN_PROGRESS")
         )).thenReturn(List.of(session));
 
         when(definitionRepository.findById(
@@ -306,7 +306,7 @@ class TestSessionServiceTest {
 
         when(sessionRepository.findByMallMemberIdAndStatusIn(
                 "dev-member-001",
-                List.of("IN_PROGRESS", "SUBMITTED")
+                List.of("IN_PROGRESS")
         )).thenReturn(List.of());
 
         Optional<SessionResponse> result =

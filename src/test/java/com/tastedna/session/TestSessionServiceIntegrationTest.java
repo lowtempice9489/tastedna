@@ -3,7 +3,11 @@ package com.tastedna.session;
 import com.tastedna.scoring.api.SimpleResultController;
 import com.tastedna.scoring.application.Q08ComparisonEvidenceService;
 import com.tastedna.scoring.application.StyleCoreCandidateService;
+import com.tastedna.session.api.dto.ApparelScope;
+import com.tastedna.session.api.dto.Mode;
+import com.tastedna.session.api.dto.StartSessionRequest;
 import com.tastedna.session.application.TestSessionService;
+import com.tastedna.session.persistence.TestSessionRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +23,9 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles("local")
 @Transactional
 class TestSessionServiceIntegrationTest {
+
+    @Autowired
+    private TestSessionRepository sessionRepository;
 
     @Autowired
     private TestSessionService sessionService;
@@ -211,6 +218,82 @@ class TestSessionServiceIntegrationTest {
                         .map(SimpleResultController.PreferredStyle::styleId)
                         .toList()
         );
+    }
+
+    // 제출된 세션은 기록으로 남기되 활성 세션을 점유하지 않는다.
+// 테스트 트랜잭션 종료 시 제출 상태 변경은 롤백된다.
+    @Test
+    void submittedSessionDoesNotBlockNewSession() {
+        String memberId = "dev-member-002";
+
+        java.util.UUID sessionId = java.util.UUID.fromString(
+                "b656c1a6-8013-49de-8e1a-29203e9800c1"
+        );
+
+        var before = sessionService.get(memberId, sessionId);
+        assertEquals("IN_PROGRESS", before.status());
+
+        var submitted = sessionService.submitSimple(
+                memberId,
+                sessionId,
+                before.revision()
+        );
+
+        assertEquals("SUBMITTED", submitted.status());
+
+        // 실제 JPA 조회에서 제출된 세션이 활성 목록에서 제외되는지 확인한다.
+        var activeSessions = sessionRepository
+                .findByMallMemberIdAndStatusIn(
+                        memberId,
+                        java.util.List.of("IN_PROGRESS")
+                );
+
+        assertTrue(activeSessions.isEmpty());
+
+        // 제출된 세션 자체는 기존 ID로 계속 조회할 수 있어야 한다.
+        var preserved = sessionService.get(memberId, sessionId);
+        assertEquals("SUBMITTED", preserved.status());
+    }
+
+    // 기존 테스트 제출 후 동일 회원이 새 테스트를 시작할 수 있다.
+// 생성된 새 세션과 기존 세션의 상태 변경은 테스트 종료 시 롤백된다.
+    @Test
+    void startsNewSimpleSessionAfterSubmission() {
+        String memberId = "dev-member-002";
+
+        java.util.UUID originalSessionId = java.util.UUID.fromString(
+                "b656c1a6-8013-49de-8e1a-29203e9800c1"
+        );
+
+        var before = sessionService.get(memberId, originalSessionId);
+        assertEquals("IN_PROGRESS", before.status());
+
+        // 기존 10문항 완료 세션을 제출한다.
+        var submitted = sessionService.submitSimple(
+                memberId,
+                originalSessionId,
+                before.revision()
+        );
+        assertEquals("SUBMITTED", submitted.status());
+
+        // 같은 회원이 새 Simple 테스트를 시작한다.
+        var newSession = sessionService.start(
+                memberId,
+                new StartSessionRequest(Mode.SIMPLE, ApparelScope.mens)
+        );
+
+        assertNotEquals(originalSessionId, newSession.sessionId());
+        assertEquals("IN_PROGRESS", newSession.status());
+        assertEquals(0L, newSession.revision());
+
+        // 이전 제출 기록은 새 세션을 생성해도 유지된다.
+        var original = sessionService.get(memberId, originalSessionId);
+        assertEquals("SUBMITTED", original.status());
+
+        // 활성 세션은 새로 생성한 세션이어야 한다.
+        var active = sessionService.findActive(memberId);
+        assertTrue(active.isPresent());
+        assertEquals(newSession.sessionId(), active.get().sessionId());
     }
 
 }
