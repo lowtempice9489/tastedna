@@ -143,4 +143,24 @@ public class TestSession {
         this.revision++;
     }
 
+    // 응답을 완료한 세션을 제출 상태로 전환한다.
+    // 제출은 RESULT 판별 완료와 다르며, 답변 완성도는 서비스에서 검증한다.
+    public void submit(LocalDateTime now) {
+        if (!"IN_PROGRESS".equals(status)) {
+            throw new IllegalStateException(
+                    "SESSION_NOT_SUBMITTABLE"
+            );
+        }
+
+        if (now == null) {
+            throw new IllegalArgumentException(
+                    "INVALID_SUBMITTED_AT"
+            );
+        }
+
+        this.status = "SUBMITTED";
+        this.submittedAt = now;
+        this.lastSeenAt = now;
+    }
+
 }

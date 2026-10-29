@@ -55,10 +55,11 @@ public class SimpleResultController {
     ) {
     }
 
-    // 현재 Simple RESULT API는 정식 판별 완료 전의 미리보기다.
-    // 최종 RESULT와 혼동하지 않도록 preview 상태를 명시한다.
+    // 테스트 제출 상태와 RESULT 판별 확정 여부는 서로 다르다.
+    // submitted는 응답 제출 여부, preview는 RESULT의 미확정 여부다.
     public record SimpleResultResponse(
             boolean preview,
+            boolean submitted,
             StyleCoreCandidateService.SimpleResultView result,
             List<PreferredStyle> preferredStyles
     ) {
@@ -147,6 +148,7 @@ public class SimpleResultController {
 
         return new SimpleResultResponse(
                 true,
+                "SUBMITTED".equals(session.status()),
                 result,
                 preferredStyles
         );

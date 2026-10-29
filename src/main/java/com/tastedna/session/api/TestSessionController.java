@@ -3,6 +3,7 @@ package com.tastedna.session.api;
 import com.tastedna.definition.api.dto.QuestionListResponse;
 import com.tastedna.definition.api.dto.QuestionResponse;
 import com.tastedna.session.api.dto.SaveAnswerRequest;
+import com.tastedna.session.api.dto.SubmitSimpleRequest;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.api.dto.SessionResponse;
 import com.tastedna.session.api.dto.StartSessionRequest;
@@ -83,6 +84,23 @@ public class TestSessionController {
                         authentication.getName(),
                         sessionId,
                         request
+                )
+        );
+    }
+
+    // POST /{sessionId}/submit — Simple 테스트의 응답 완료 후 제출한다.
+    // 회원 소유권, 응답 완성도, Revision과 제출 가능 상태는 서비스에서 검증한다.
+    @PostMapping("/{sessionId}/submit")
+    public ResponseEntity<SessionResponse> submitSimple(
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody SubmitSimpleRequest request,
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(
+                service.submitSimple(
+                        authentication.getName(),
+                        sessionId,
+                        request.expectedRevision()
                 )
         );
     }

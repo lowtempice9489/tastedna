@@ -425,6 +425,109 @@ public class TestSessionService {
         return toResponse(session, definition.getTestMode());
     }
 
+    // Simple 세션의 모든 질문에 답변한 경우에만 제출한다.
+    // 회원 소유권과 Revision을 확인하며, 제출은 RESULT 확정과 구분한다.
+    @Transactional
+    public SessionResponse submitSimple(
+            String memberId,
+            UUID sessionId,
+            long expectedRevision
+    ) {
+        // 기존 답변 저장과 동일하게 세션 행을 잠가 동시 변경을 방지한다.
+        TestSession session = sessionRepository
+                .findByIdAndMemberIdForUpdate(
+                        sessionId.toString(),
+                        memberId
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "SESSION_NOT_FOUND"
+                ));
+
+        if (!"IN_PROGRESS".equals(session.getStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "SESSION_NOT_SUBMITTABLE"
+            );
+        }
+
+        if (session.getRevision() != expectedRevision) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "SESSION_REVISION_CONFLICT"
+            );
+        }
+
+        TestDefinition definition = definitionRepository
+                .findById(session.getDefinitionId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "SESSION_DEFINITION_NOT_FOUND"
+                ));
+
+        if (!"SIMPLE".equals(definition.getTestMode())) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "SIMPLE_SESSION_REQUIRED"
+            );
+        }
+
+        // 세션 시작 시 배정된 질문 목록을 제출 완성도 기준으로 사용한다.
+        String[] questionOrder;
+
+        try {
+            questionOrder = mapper.readValue(
+                    session.getQuestionOrder(),
+                    String[].class
+            );
+        } catch (Exception e) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "INVALID_SESSION_QUESTION_ORDER",
+                    e
+            );
+        }
+
+        Set<String> requiredQuestionIds = Set.of(
+                "Q01", "Q02", "Q03", "Q04", "Q05",
+                "Q06", "Q07", "Q08", "Q09", "Q10"
+        );
+
+        if (questionOrder.length != requiredQuestionIds.size()
+                || !new HashSet<>(Arrays.asList(questionOrder))
+                .equals(requiredQuestionIds)) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "SIMPLE_QUESTION_SET_INVALID"
+            );
+        }
+
+        Set<String> answeredQuestionIds = answerRepository
+                .findByIdSessionIdOrderByIdQuestionIdAsc(
+                        sessionId.toString()
+                )
+                .stream()
+                .map(answer -> answer.getId().getQuestionId())
+                .collect(java.util.stream.Collectors.toSet());
+
+        if (!answeredQuestionIds.containsAll(requiredQuestionIds)) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "SIMPLE_ANSWERS_INCOMPLETE"
+            );
+        }
+
+        // 답변을 수정하지 않고 제출 상태와 제출 시각만 기록한다.
+        LocalDateTime now = LocalDateTime.ofInstant(
+                Instant.now(),
+                ZoneOffset.UTC
+        );
+
+        session.submit(now);
+
+        return toResponse(session, definition.getTestMode());
+    }
+
     @Transactional(readOnly = true)
     public QuestionResponse getQuestion(
             String memberId,
