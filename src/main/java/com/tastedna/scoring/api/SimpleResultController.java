@@ -1,6 +1,7 @@
 package com.tastedna.scoring.api;
 
 import com.tastedna.scoring.application.Q08ComparisonEvidenceService;
+import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.scoring.application.StyleCoreCandidateService;
 import com.tastedna.scoring.domain.ResultCandidate;
 import com.tastedna.scoring.persistence.ResultCandidateRepository;
@@ -16,10 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Comparator;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 // Simple 테스트의 사용자용 RESULT 조회 API.
 // 현재 판별 설정이 개발용 JSON에 의존하므로 local 환경에서만 제공한다.
@@ -31,6 +29,7 @@ public class SimpleResultController {
     private final TestSessionService sessionService;
     private final StyleCoreCandidateService candidateService;
     private final Q08ComparisonEvidenceService q08EvidenceService;
+    private final SessionObservationService observationService;
     private final ResultCandidateRepository candidateRepository;
     private final SessionAnswerRepository answerRepository;
 
@@ -38,12 +37,14 @@ public class SimpleResultController {
             TestSessionService sessionService,
             StyleCoreCandidateService candidateService,
             Q08ComparisonEvidenceService q08EvidenceService,
+            SessionObservationService observationService,
             ResultCandidateRepository candidateRepository,
             SessionAnswerRepository answerRepository
     ) {
         this.sessionService = sessionService;
         this.candidateService = candidateService;
         this.q08EvidenceService = q08EvidenceService;
+        this.observationService = observationService;
         this.candidateRepository = candidateRepository;
         this.answerRepository = answerRepository;
     }
@@ -55,13 +56,18 @@ public class SimpleResultController {
     ) {
     }
 
-    // 테스트 제출 상태와 RESULT 판별 확정 여부는 서로 다르다.
-    // submitted는 응답 제출 여부, preview는 RESULT의 미확정 여부다.
+    // 쇼핑몰이 선택지 ID의 출처와 응답 버전을 구분할 수 있도록 한다.
+    // definitionId는 질문 정의, revision은 현재 세션 답변 버전이다.
     public record SimpleResultResponse(
+            UUID definitionId,
+            long revision,
             boolean preview,
             boolean submitted,
             StyleCoreCandidateService.SimpleResultView result,
-            List<PreferredStyle> preferredStyles
+            List<PreferredStyle> preferredStyles,
+            List<String> recommendationStyleIds,
+            Map<String, List<String>> directPreferences,
+            Map<String, List<String>> directPreferenceOptionIds
     ) {
     }
 
@@ -109,6 +115,52 @@ public class SimpleResultController {
             );
         }
 
+        // 검증된 스타일 판별 규칙 없이도 표시할 수 있는 직접 선호만 추출한다.
+// Q01·Q03·Q04에서 실제로 선택한 값만 사용자 RESULT에 포함한다.
+        var rawObservations = observationService.collectRaw(
+                memberId,
+                sessionId.toString()
+        );
+
+        Map<String, List<String>> directPreferences =
+                new java.util.LinkedHashMap<>();
+
+        Map<String, List<String>> directPreferenceOptionIds =
+                new java.util.LinkedHashMap<>();
+
+        Map<String, String> preferenceTypes = Map.of(
+                "colors", "DIRECT_COLOR_PREFERENCE",
+                "silhouettes", "DIRECT_SILHOUETTE_PREFERENCE",
+                "patterns", "DIRECT_PATTERN_GRAPHIC_PREFERENCE"
+        );
+
+        for (String key : List.of("colors", "silhouettes", "patterns")) {
+            String observationType = preferenceTypes.get(key);
+
+            List<String> values = rawObservations
+                    .getOrDefault(observationType, List.of())
+                    .stream()
+                    .filter(observation ->
+                            "EXPLICIT_SELECTION".equals(observation.evidence()))
+                    .map(observation -> observation.observedValue())
+                    .distinct()
+                    .toList();
+
+            directPreferences.put(key, values);
+
+            // 쇼핑몰이 표시 문구에 의존하지 않도록 원래 선택지 ID도 제공한다.
+            List<String> optionIds = rawObservations
+                    .getOrDefault(observationType, List.of())
+                    .stream()
+                    .filter(observation ->
+                            "EXPLICIT_SELECTION".equals(observation.evidence()))
+                    .map(observation -> observation.optionId())
+                    .distinct()
+                    .toList();
+
+            directPreferenceOptionIds.put(key, optionIds);
+        }
+
         // 저장된 응답으로 사용자용 RESULT를 생성한다.
         var result = candidateService.buildSimpleResultViewFromSession(
                 memberId,
@@ -147,10 +199,15 @@ public class SimpleResultController {
         }
 
         return new SimpleResultResponse(
+                session.definitionId(),
+                session.revision(),
                 true,
                 "SUBMITTED".equals(session.status()),
                 result,
-                preferredStyles
+                preferredStyles,
+                List.of(),
+                directPreferences,
+                directPreferenceOptionIds
         );
     }
 }
