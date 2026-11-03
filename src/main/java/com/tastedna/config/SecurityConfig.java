@@ -29,6 +29,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 HttpMethod.GET, "/api/v1/health"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app.css", "/app.js", "/assessment-state.mjs", "/shop.mjs", "/shop.css", "/api/v1/demo/products", "/assets/gender/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form.disable())
@@ -63,9 +64,16 @@ public class SecurityConfig {
                 .roles("MEMBER")
                 .build();
 
+        // 기존 개발 회원의 진행 중 답변을 보존하기 위한 이미지 데모 전용 계정이다.
+        var imageDemo = User.withUsername("dev-image-demo")
+                .password(encodedPassword)
+                .roles("MEMBER")
+                .build();
+
         return new InMemoryUserDetailsManager(
                 member001,
-                member002
+                member002,
+                imageDemo
         );
     }
 

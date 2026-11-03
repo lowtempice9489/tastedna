@@ -20,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.*;
 
 // Simple 테스트의 사용자용 RESULT 조회 API.
-// 현재 판별 설정이 개발용 JSON에 의존하므로 local 환경에서만 제공한다.
+// 기존 v1의 실험용 후보 분석 계약이므로 local 환경에서만 제공한다.
 @RestController
 @RequestMapping("/api/v1/sessions")
 @Profile("local")
@@ -91,6 +91,12 @@ public class SimpleResultController {
                     HttpStatus.UNPROCESSABLE_CONTENT,
                     "SIMPLE_SESSION_REQUIRED"
             );
+        }
+
+        // 이미지 v2는 별도 근거 요약 API를 사용하며 v1 실험 매핑을 재사용하지 않는다.
+        if (UUID.fromString("33333333-3333-4333-8333-333333333333").equals(session.definitionId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "USE_PREFERENCE_SUMMARY_FOR_IMAGE_DEFINITION");
         }
 
         // 현재 Simple 테스트는 Q01~Q10 응답이 모두 있어야

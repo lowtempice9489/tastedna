@@ -1,6 +1,7 @@
 package com.tastedna.scoring.application;
 
 import com.tastedna.session.application.comparison.ComparisonAnswerPayloadExtractor;
+import com.tastedna.session.application.comparison.ComparisonAnswerValidator;
 import com.tastedna.session.application.multi.MultiChoiceAnswerPayloadExtractor;
 import com.tastedna.session.application.single.SingleChoiceAnswerPayloadExtractor;
 import com.tastedna.session.domain.SessionAnswer;
@@ -164,15 +165,8 @@ public class SessionObservationService {
 
                 // 비교형 답변은 C01:A처럼 비교쌍 ID와 선택지 ID를 함께 보존한다.
                 // 단순 A/B 선택으로 변환하면 서로 다른 비교쌍의 의미가 섞일 수 있다.
-                JsonNode comparisons = question.get("comparisons");
-
-                if (comparisons == null
-                        || !comparisons.isArray()
-                        || comparisons.size() != selections.size()) {
-                    throw new IllegalStateException(
-                            "INVALID_STORED_COMPARISON"
-                    );
-                }
+                ComparisonAnswerValidator.validate(answer.getPresentedPayload(), payload, mapper);
+                var comparisons = ComparisonAnswerValidator.activeComparisons(question, selections);
 
                 List<String> comparisonOptions =
                         new ArrayList<>();

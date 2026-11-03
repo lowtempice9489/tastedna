@@ -50,6 +50,17 @@ public class TestSessionService {
             String memberId,
             StartSessionRequest request) {
 
+        return startInternal(memberId, request, null);
+    }
+
+    // 이미지 정의는 서버가 선택하고 기존 활성 정의와 세션은 변경하지 않는다.
+    @Transactional
+    public SessionResponse startImageSimple(String memberId) {
+        return startInternal(memberId, new StartSessionRequest(Mode.SIMPLE, ApparelScope.mens),
+                "33333333-3333-4333-8333-333333333333");
+    }
+
+    private SessionResponse startInternal(String memberId, StartSessionRequest request, String imageDefinitionId) {
         boolean hasActiveSession = !sessionRepository
                 .findByMallMemberIdAndStatusIn(
                         memberId,
@@ -63,8 +74,9 @@ public class TestSessionService {
             );
         }
 
-        TestDefinition definition = definitionRepository
-                .findByTestModeAndActiveTrue(request.mode().name())
+        TestDefinition definition = (imageDefinitionId == null
+                ? definitionRepository.findByTestModeAndActiveTrue(request.mode().name())
+                : definitionRepository.findById(imageDefinitionId))
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNPROCESSABLE_CONTENT,
                         "ACTIVE_DEFINITION_NOT_FOUND"

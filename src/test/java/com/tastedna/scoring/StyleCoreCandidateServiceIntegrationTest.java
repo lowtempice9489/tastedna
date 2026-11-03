@@ -49,6 +49,9 @@ class StyleCoreCandidateServiceIntegrationTest {
     @Autowired
     private JsonMapper mapper;
 
+    @Autowired
+    private com.tastedna.scoring.application.ScoringConfigurationService configurationService;
+
     // 저장된 세션의 Q02 선택이 R01과 R02 후보로 연결되는지 확인한다.
     // 실제 답변 저장 데이터에서 후보 추출까지 이어지는 흐름을 검증한다.
     @Test
@@ -61,7 +64,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         Set<String> candidates =
@@ -88,7 +92,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var assessment = service.assessFromSession(
@@ -121,7 +126,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var evidence = service.extractEvidenceFromSession(
@@ -188,7 +194,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var profile = service.buildSimpleObservationProfile(
@@ -246,7 +253,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var matches = service.matchSimpleAttributesFromSession(
@@ -319,7 +327,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         Set<String> initialCandidates = service.extractFromSession(
@@ -361,7 +370,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var matches = service.matchSimpleAttributesFromSession(
@@ -398,7 +408,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var assessment =
@@ -491,7 +502,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var decision = service.decideSimpleResultFromSession(
@@ -541,7 +553,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var actual = service.analyzeSimpleSession(
@@ -631,7 +644,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var result = service.buildSimpleResultViewFromSession(
@@ -740,7 +754,8 @@ class StyleCoreCandidateServiceIntegrationTest {
                         mappingRepository,
                         attributeMappingRepository,
                         profileRepository,
-                        relationRepository
+                        relationRepository,
+                    configurationService
                 );
 
         var q08Decision =

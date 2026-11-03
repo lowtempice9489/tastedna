@@ -8,8 +8,6 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +23,7 @@ public class StyleCoreCandidateService {
     private final SimpleAttributeMappingRepository attributeMappingRepository;
     private final SimpleCandidateProfileRepository profileRepository;
     private final SimpleCandidateRelationRepository relationRepository;
+    private final ScoringConfigurationService configurationService;
 
     // Spring이 기존 관측 서비스와 DB 매핑 조회기를 생성자로 주입한다.
     public StyleCoreCandidateService(
@@ -33,7 +32,8 @@ public class StyleCoreCandidateService {
             StyleCoreDirectMappingRepository mappingRepository,
             SimpleAttributeMappingRepository attributeMappingRepository,
             SimpleCandidateProfileRepository profileRepository,
-            SimpleCandidateRelationRepository relationRepository
+            SimpleCandidateRelationRepository relationRepository,
+            ScoringConfigurationService configurationService
     ) {
         this.observationService = observationService;
         this.mapper = mapper;
@@ -41,6 +41,7 @@ public class StyleCoreCandidateService {
         this.attributeMappingRepository = attributeMappingRepository;
         this.profileRepository = profileRepository;
         this.relationRepository = relationRepository;
+        this.configurationService = configurationService;
     }
 
     // DB의 실험용 속성 근거를 기존 Matcher 입력 형식으로 구성한다.
@@ -230,7 +231,10 @@ public class StyleCoreCandidateService {
 
         Set<String> unavailableQuestions =
                 VisualEvidenceReadinessEvaluator
-                        .findUnavailableQuestions(mapper);
+                        .findUnavailableQuestions(
+                                configurationService.load("22222222-2222-4222-8222-222222222222", "outfit-metadata"),
+                                configurationService.load("22222222-2222-4222-8222-222222222222", "comparison-metadata"),
+                                configurationService.load("22222222-2222-4222-8222-222222222222", "combination-metadata"));
 
         return new ResultEvidenceAssessment(
                 candidates,
@@ -269,30 +273,9 @@ public class StyleCoreCandidateService {
             String memberId,
             String sessionId
     ) {
-        try {
-            var candidateEvidence = extractEvidenceFromSession(
-                    memberId,
-                    sessionId
-            );
-
-            JsonNode configuration = mapper.readTree(
-                    Files.readString(Path.of(
-                            "dev", "fixtures", "result",
-                            "simple_style_core_discrimination_v0.1.json"
-                    ))
-            );
-
-            return SimpleCandidateDiscrimination.assess(
-                    candidateEvidence,
-                    configuration
-            );
-
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException(
-                    "DISCRIMINATION_CONFIGURATION_LOAD_FAILED",
-                    e
-            );
-        }
+        var candidateEvidence = extractEvidenceFromSession(memberId, sessionId);
+        return SimpleCandidateDiscrimination.assess(candidateEvidence,
+                configurationService.load("22222222-2222-4222-8222-222222222222", "discrimination"));
     }
 
     // 실제 세션에서 생성된 모든 Raw 관측을 Simple 판별용 프로필로 구성한다.
