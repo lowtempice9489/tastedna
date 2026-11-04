@@ -157,8 +157,59 @@ class MemberAuthHttpTest {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALID"));
         mvc.perform(get("/api/v1/sessions/" + id + "/raw-observations").session(browser.session()))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
-        mvc.perform(get("/api/v1/auth/me").with(user("form-test").roles("OTHER")))
+        mvc.perform(get("/api/v1/auth/me").with(user(stored.get("csrf@example.com").getMemberId()).roles("OTHER")))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
+
+    @Test void disabledExistingSessionsAreRevokedAcrossAssessmentEndpoints() throws Exception {
+        String email = "revoked@example.com";
+        var first = signupAndLogin(email);
+        var other = signupAndLogin("unaffected@example.com");
+        String id = UUID.randomUUID().toString();
+        var paths = List.of("/api/v1/auth/me", "/api/v1/sessions/active", "/api/v1/sessions/" + id,
+                "/api/v1/sessions/" + id + "/answers", "/api/v1/sessions/" + id + "/preference-summary",
+                "/api/v1/sessions", "/api/v1/sessions/simple-image",
+                "/api/v1/sessions/" + id + "/answers", "/api/v1/sessions/" + id + "/submit");
+        var browsers = new ArrayList<Browser>();
+        browsers.add(first);
+        for (int i = 1; i < paths.size(); i++) {
+            var browser = csrfToken(null);
+            mvc.perform(protectedPost("/api/v1/auth/login", browser).content(credentials(email, PASSWORD)))
+                    .andExpect(status().isOk());
+            browsers.add(csrfToken(browser.session()));
+        }
+        var original = stored.get(email);
+        var disabled = spy(original);
+        when(disabled.getStatus()).thenReturn("DISABLED");
+        stored.put(email, disabled);
+        for (int i = 0; i < paths.size(); i++) {
+            var browser = browsers.get(i);
+            var context = (SecurityContext) browser.session().getAttribute("SPRING_SECURITY_CONTEXT");
+            var request = i < 5 ? get(paths.get(i)).session(browser.session())
+                    : protectedPost(paths.get(i), browser).content("{}");
+            mvc.perform(request).andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"))
+                    .andExpect(cookie().maxAge("FORMSESSION", 0));
+            assertTrue(browser.session().isInvalid());
+            assertNull(context.getAuthentication());
+        }
+        verifyNoInteractions(sessions, answers);
+        mvc.perform(get("/api/v1/auth/me").session(other.session())).andExpect(status().isOk());
+        assertFalse(other.session().isInvalid());
+        stored.put(email, original);
+        // 상태를 복구해도 폐기된 세션의 인증 정보는 되살아나지 않는다.
+        assertTrue(first.session().isInvalid());
+        mvc.perform(get("/api/v1/auth/me").cookie(new jakarta.servlet.http.Cookie("FORMSESSION", first.session().getId())))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test void missingMemberIsRevokedEvenWithoutCsrf() throws Exception {
+        var browser = signupAndLogin("removed@example.com");
+        stored.remove("removed@example.com");
+        mvc.perform(post("/api/v1/sessions").session(browser.session()).contentType("application/json").content("{}"))
+                .andExpect(status().isUnauthorized()).andExpect(cookie().maxAge("FORMSESSION", 0));
+        assertTrue(browser.session().isInvalid());
+        verifyNoInteractions(sessions, answers);
     }
 
     @Test void disabledAccountHasGenericLoginFailureAndLimiterReturns429() throws Exception {

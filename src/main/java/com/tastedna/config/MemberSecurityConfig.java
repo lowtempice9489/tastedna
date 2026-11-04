@@ -8,6 +8,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfAuthenticationStrategy;
@@ -49,8 +51,15 @@ public class MemberSecurityConfig {
                 new ChangeSessionIdAuthenticationStrategy(), new CsrfAuthenticationStrategy(tokens)));
     }
     @Bean public SecurityFilterChain memberSecurity(HttpSecurity http,
-            HttpSessionSecurityContextRepository contexts, HttpSessionCsrfTokenRepository tokens) throws Exception {
+            HttpSessionSecurityContextRepository contexts, HttpSessionCsrfTokenRepository tokens,
+            FormMemberRepository members) throws Exception {
+        AuthenticationEntryPoint entryPoint = (req, res, ex) -> {
+            res.setStatus(401); res.setContentType("application/json;charset=UTF-8");
+            res.getWriter().write("{\"code\":\"AUTHENTICATION_REQUIRED\",\"message\":\"로그인이 필요합니다.\"}");
+        };
         http.securityContext(context -> context.securityContextRepository(contexts).requireExplicitSave(true))
+                // 인증 복원 후 CSRF 검사 전에 폐기하여 잘못된 CSRF 요청으로도 비활성 세션을 유지할 수 없게 한다.
+                .addFilterBefore(new MemberStatusFilter(members, entryPoint), CsrfFilter.class)
                 .csrf(csrf -> csrf.csrfTokenRepository(tokens))
                 .requestCache(cache -> cache.disable())
                 .formLogin(form -> form.disable())
@@ -68,10 +77,7 @@ public class MemberSecurityConfig {
                                 "/api/v1/sessions/{sessionId}/submit").hasRole("MEMBER")
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors
-                        .authenticationEntryPoint((req, res, ex) -> {
-                            res.setStatus(401); res.setContentType("application/json;charset=UTF-8");
-                            res.getWriter().write("{\"code\":\"AUTHENTICATION_REQUIRED\",\"message\":\"로그인이 필요합니다.\"}");
-                        })
+                        .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler((req, res, ex) -> {
                             res.setStatus(403); res.setContentType("application/json;charset=UTF-8");
                             String code = ex instanceof org.springframework.security.web.csrf.CsrfException
