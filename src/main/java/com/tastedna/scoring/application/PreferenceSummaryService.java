@@ -13,8 +13,9 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
-// 답변 당시 표시된 정의에서 선택 근거를 복원한다. 점수나 미선택의 부정 의미를 만들지 않는다.
+// 답변 당시 정의에서 근거를 복원한다. 미선택 비선호는 명시된 순위형 그룹 안에서만 생성한다.
 @Service
 public class PreferenceSummaryService {
     private final TestSessionRepository sessions;
@@ -25,9 +26,18 @@ public class PreferenceSummaryService {
                                     TestSessionService sessionService, JsonMapper mapper) {
         this.sessions = sessions; this.answers = answers; this.sessionService = sessionService; this.mapper = mapper;
     }
-    public record Selection(String optionId, String label, List<String> images) {}
+    public record Selection(String optionId, String label, List<String> images,
+                            @JsonInclude(JsonInclude.Include.NON_NULL) Integer rank) {
+        public Selection(String optionId, String label, List<String> images) { this(optionId, label, images, null); }
+    }
     public record Evidence(String questionId, String comparisonId, String prompt, String meaning,
-                           long answerRevision, List<Selection> selections, List<Selection> alternatives) {}
+                           long answerRevision, List<Selection> selections, List<Selection> alternatives,
+                           @JsonInclude(JsonInclude.Include.NON_EMPTY) List<Selection> notPreferred) {
+        public Evidence(String questionId, String comparisonId, String prompt, String meaning,
+                        long answerRevision, List<Selection> selections, List<Selection> alternatives) {
+            this(questionId, comparisonId, prompt, meaning, answerRevision, selections, alternatives, List.of());
+        }
+    }
     public record AnswerSnapshot(SessionResponse session, Map<String, JsonNode> answers) {}
     public record Summary(SessionResponse session, String status, String title, String description,
                           boolean comprehensiveResult, List<Evidence> evidence) {}
@@ -63,12 +73,24 @@ public class PreferenceSummaryService {
             String kind = question.path("kind").asString();
             if ("COMPARISON".equals(kind)) {
                 ComparisonAnswerValidator.validate(answer.getPresentedPayload(), payload, mapper);
-                var selected = ComparisonAnswerPayloadExtractor.extract(payload);
+                var selected = ComparisonAnswerPayloadExtractor.extractSelections(payload);
                 for (JsonNode group : ComparisonAnswerValidator.activeComparisons(question, selected)) {
                     String cid = group.path("id").asString();
-                    evidence.add(new Evidence(qid, cid, group.path("label").asString(), "COMPARATIVE_PREFERENCE",
-                            answer.getAnswerRevision(), select(group, Set.of(selected.get(cid)), true),
-                            select(group, Set.of(selected.get(cid)), false)));
+                    var selection = selected.get(cid);
+                    if (selection.ranked()) {
+                        List<Selection> ranked = new ArrayList<>();
+                        for (String optionId : selection.optionIds()) {
+                            var item = select(group, Set.of(optionId), true).getFirst();
+                            ranked.add(new Selection(item.optionId(), item.label(), item.images(), ranked.size() + 1));
+                        }
+                        evidence.add(new Evidence(qid, cid, group.path("label").asString(), "RANKED_COMPARATIVE_PREFERENCE",
+                                answer.getAnswerRevision(), List.copyOf(ranked), List.of(),
+                                select(group, new HashSet<>(selection.notPreferredIds(group)), true)));
+                    } else {
+                        var ids = new HashSet<>(selection.optionIds());
+                        evidence.add(new Evidence(qid, cid, group.path("label").asString(), "COMPARATIVE_PREFERENCE",
+                                answer.getAnswerRevision(), select(group, ids, true), select(group, ids, false)));
+                    }
                 }
             } else {
                 Set<String> selected = "MULTIPLE_CHOICE".equals(kind)

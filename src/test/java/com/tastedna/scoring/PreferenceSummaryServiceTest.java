@@ -2,6 +2,7 @@ package com.tastedna.scoring;
 
 import com.tastedna.scoring.application.PreferenceSummaryService;
 import com.tastedna.session.ImageDefinitionTest;
+import com.tastedna.session.RankedComparisonTest;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.domain.*;
 import com.tastedna.session.persistence.*;
@@ -56,7 +57,34 @@ class PreferenceSummaryServiceTest {
         when(answers.findByIdSessionIdOrderByIdQuestionIdAsc(id.toString())).thenReturn(List.of());
         assertEquals(422, assertThrows(ResponseStatusException.class, () -> service.summarize("member", id)).getStatusCode().value());
     }
-    private void prepare(String avoidance) throws Exception {
+    @Test void rankedSummaryKeepsOrderAndSeparatesNonPreferenceFromOrdinaryAlternatives() throws Exception {
+        var rows = prepare("NONE");
+        rows.set(8, new SessionAnswer(id.toString(), "Q09", RankedComparisonTest.answer("[\"B\",\"A\"]"),
+                RankedComparisonTest.definition(), 9, LocalDateTime.now()));
+        var summary = service.summarize("member", id);
+        var ranked = summary.evidence().stream().filter(e -> e.meaning().equals("RANKED_COMPARATIVE_PREFERENCE")).findFirst().orElseThrow();
+        assertEquals(List.of("B", "A"), ranked.selections().stream().map(PreferenceSummaryService.Selection::optionId).toList());
+        assertEquals(List.of(1, 2), ranked.selections().stream().map(PreferenceSummaryService.Selection::rank).toList());
+        assertEquals(List.of("C"), ranked.notPreferred().stream().map(PreferenceSummaryService.Selection::optionId).toList());
+        assertTrue(ranked.alternatives().isEmpty());
+        assertEquals(9, ranked.answerRevision());
+        for (var other : summary.evidence()) if (other != ranked) {
+            assertTrue(other.notPreferred().isEmpty());
+            assertTrue(other.selections().stream().allMatch(s -> s.rank() == null));
+            var json = mapper.valueToTree(other);
+            assertFalse(json.has("notPreferred"));
+            assertFalse(json.path("selections").get(0).has("rank"));
+        }
+        var snapshot = service.snapshot("member", id);
+        assertEquals(mapper.readTree(RankedComparisonTest.answer("[\"B\",\"A\"]")), snapshot.answers().get("Q09"));
+    }
+    @Test void allRankedSelectedProducesNoNegativeEvidence() throws Exception {
+        var rows = prepare("NONE");
+        rows.set(8, new SessionAnswer(id.toString(), "Q09", RankedComparisonTest.answer("[\"C\",\"B\",\"A\"]"),
+                RankedComparisonTest.definition(), 9, LocalDateTime.now()));
+        assertTrue(service.summarize("member", id).evidence().stream().allMatch(e -> e.notPreferred().isEmpty()));
+    }
+    private List<SessionAnswer> prepare(String avoidance) throws Exception {
         var session = mock(TestSession.class);
         when(session.getStatus()).thenReturn("SUBMITTED");
         when(sessions.findByIdAndMemberIdForUpdate(id.toString(), "member")).thenReturn(Optional.of(session));
@@ -77,6 +105,7 @@ class PreferenceSummaryServiceTest {
             rows.add(new SessionAnswer(id.toString(), qid, payloads[i], questions.get(qid).toString(), i+1, LocalDateTime.now()));
         }
         when(answers.findByIdSessionIdOrderByIdQuestionIdAsc(id.toString())).thenReturn(rows);
+        return rows;
     }
 }
 

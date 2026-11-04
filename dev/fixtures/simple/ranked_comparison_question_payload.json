@@ -1,0 +1,22 @@
+{
+  "kind": "COMPARISON",
+  "prompt": "테스트 전용 혼합 비교",
+  "comparisons": [
+    {
+      "id": "C01",
+      "label": "기존 단일 비교",
+      "options": [{"id": "A", "label": "단일 A"}, {"id": "B", "label": "단일 B"}]
+    },
+    {
+      "id": "C02",
+      "label": "순위형 비교",
+      "selectionMode": "RANKED_MULTI_SELECT",
+      "minSelections": 1,
+      "options": [
+        {"id": "A", "label": "항목 A"},
+        {"id": "B", "label": "항목 B"},
+        {"id": "C", "label": "항목 C"}
+      ]
+    }
+  ]
+}

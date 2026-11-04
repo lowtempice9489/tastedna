@@ -17,3 +17,8 @@
 - simple_evidence_capability_v0.1.json, simple_outfit_option_metadata_v0.1.json, simple_style_core_candidate_profiles_v0.1.json: 실행·테스트 참조가 없는 이전 실험 메타데이터. 기존 DB 마이그레이션과 사용 중인 구체적인 메타데이터 fixture를 유지한다.
 
 총 15개 JSON을 제거했다. DB 데이터·이미지·서비스 코드·실행 스크립트는 변경하지 않았다. 테스트용 JSON을 없애기 위해 검증 자체를 삭제하지 않는다.
+## 공통 순위형 비교 fixture (2026-11-04 추가)
+
+`simple/ranked_comparison_question_payload.json`은 Java/Node 테스트가 공유하는 격리된 혼합 비교 정의다.
+`minSelections: 1`은 테스트 예시이며 제품의 최소 선택 정책을 확정하지 않는다.
+DB에 등록하거나 활성화하지 않는다. 상세 계약과 테스트 명령은 `docs/ranked-comparison-contract.md`에 있다.

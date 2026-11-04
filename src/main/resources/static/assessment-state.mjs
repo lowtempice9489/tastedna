@@ -9,13 +9,23 @@ export function activeGroups(question, selections = {}) {
   });
 }
 export function selectionMap(answer) {
-  return Object.fromEntries((answer?.selections || []).map(s => [s.comparisonId, s.selectedOptionId]));
+  return Object.fromEntries((answer?.selections || []).map(s => [s.comparisonId, s.selectedOptionIds ?? s.selectedOptionId]));
+}
+export const isRanked = group => group.selectionMode === 'RANKED_MULTI_SELECT';
+function comparisonAnswer(question, selected) {
+  return {selections: activeGroups(question, selected).filter(g => selected[g.id] !== undefined).map(g =>
+    isRanked(g) ? {comparisonId:g.id, selectedOptionIds:selected[g.id]} : {comparisonId:g.id, selectedOptionId:selected[g.id]})};
 }
 export function choose(question, answer, optionId, groupId) {
   if (question.kind === 'COMPARISON') {
-    const selected = {...selectionMap(answer), [groupId]: optionId};
-    const groups = activeGroups(question, selected);
-    return {selections: groups.filter(g => selected[g.id]).map(g => ({comparisonId:g.id, selectedOptionId:selected[g.id]}))};
+    const selected = {...selectionMap(answer)};
+    const group = question.comparisons.find(g => g.id === groupId);
+    if (isRanked(group)) {
+      const ids = selected[groupId] || [];
+      selected[groupId] = optionId === null && group.minSelections === 0 ? []
+        : ids.includes(optionId) ? ids.filter(id => id !== optionId) : [...ids, optionId];
+    } else selected[groupId] = optionId;
+    return comparisonAnswer(question, selected);
   }
   if (question.kind === 'SINGLE_CHOICE') return {selectedOptionId: optionId};
   const exclusive = question.exclusiveOptionIds || [];
@@ -33,9 +43,20 @@ export function valid(question, answer) {
   if (!answer) return false;
   if (question.kind === 'COMPARISON') {
     const selections = selectionMap(answer), groups = activeGroups(question, selections);
-    return answer.selections?.length === groups.length
+    return Object.keys(answer).length === 1 && answer.selections?.length === groups.length
       && Object.keys(selections).length === groups.length
-      && groups.every(g => g.options.some(o => o.id === selections[g.id]));
+      && groups.every(g => {
+        const entry = answer.selections.find(s => s.comparisonId === g.id);
+        if (!entry || Object.keys(entry).length !== 2) return false;
+        if (isRanked(g)) {
+          const ids = entry.selectedOptionIds;
+          return Number.isInteger(g.minSelections) && g.minSelections >= 0 && g.minSelections <= g.options.length
+            && Array.isArray(ids) && ids.length >= g.minSelections && new Set(ids).size === ids.length
+            && ids.every(id => g.options.some(o => o.id === id));
+        }
+        return (g.selectionMode === undefined || g.selectionMode === 'SINGLE')
+          && typeof entry.selectedOptionId === 'string' && g.options.some(o => o.id === entry.selectedOptionId);
+      });
   }
   const ids = question.kind === 'SINGLE_CHOICE' ? [answer.selectedOptionId] : answer.selectedOptionIds;
   return Array.isArray(ids) && ids.length > 0 && new Set(ids).size === ids.length

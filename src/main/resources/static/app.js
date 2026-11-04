@@ -1,5 +1,5 @@
 import {storefront} from './shop.mjs';
-import {activeGroups, selectionMap, choose, valid} from './assessment-state.mjs';
+import {activeGroups, selectionMap, choose, valid, isRanked} from './assessment-state.mjs';
 
 const main=document.querySelector('main'), notice=document.querySelector('#notice'), dialog=document.querySelector('#zoom');
 let authorization='', session=null, questions=[], answers={}, step=0, busy=false, toastTimer;
@@ -89,19 +89,23 @@ function imageMarkup(images,alt){
 }
 function optionMarkup(option,q,groupId){
  const answer=answers[q.questionId],p=q.questionPayload;
- const selected=groupId?selectionMap(answer)[groupId]===option.id:p.kind==='MULTIPLE_CHOICE'?answer?.selectedOptionIds?.includes(option.id):answer?.selectedOptionId===option.id;
- const multi=p.kind==='MULTIPLE_CHOICE';
+ const group=groupId?p.comparisons.find(g=>g.id===groupId):null;
+ const ranked=group&&isRanked(group), groupSelection=groupId?selectionMap(answer)[groupId]:null;
+ const rank=ranked&&Array.isArray(groupSelection)?groupSelection.indexOf(option.id)+1:0;
+ const selected=groupId?(ranked?rank>0:groupSelection===option.id):p.kind==='MULTIPLE_CHOICE'?answer?.selectedOptionIds?.includes(option.id):answer?.selectedOptionId===option.id;
+ const multi=p.kind==='MULTIPLE_CHOICE'||ranked;
  const images=option.images||[];
- return '<div class="choice '+(selected?'selected':'')+'"><label>'+imageMarkup(images,option.label)+'<span class="label"><input type="'+(multi?'checkbox':'radio')+'" name="'+esc(groupId||q.questionId)+'" value="'+esc(option.id)+'" data-group="'+esc(groupId||'')+'" '+(selected?'checked':'')+'><span>'+esc(option.label)+'</span></span></label>'+(images.length?'<button class="zoom-button" type="button" data-zoom="'+esc(safeUrl(images[0]))+'">크게 보기 ↗</button>':'')+'</div>';
+ return '<div class="choice '+(selected?'selected':'')+'"><label>'+imageMarkup(images,option.label)+'<span class="label"><input type="'+(multi?'checkbox':'radio')+'" name="'+esc(groupId||q.questionId)+'" value="'+esc(option.id)+'" data-group="'+esc(groupId||'')+'" '+(selected?'checked':'')+'><span>'+(rank?rank+'위 · ':'')+esc(option.label)+'</span></span></label>'+(images.length?'<button class="zoom-button" type="button" data-zoom="'+esc(safeUrl(images[0]))+'">크게 보기 ↗</button>':'')+'</div>';
 }
 function render(){
  if(step===questions.length){review();return;}
  const q=questions[step],p=q.questionPayload,comparison=p.kind==='COMPARISON';
- const rule=comparison?'각 비교에서 하나씩 선택':p.kind==='MULTIPLE_CHOICE'?'최대 '+p.maxSelections+'개 선택':'하나만 선택';
+ const rule=comparison?(p.comparisons.some(isRanked)?'각 비교의 선택 안내를 따라주세요':'각 비교에서 하나씩 선택'):p.kind==='MULTIPLE_CHOICE'?'최대 '+p.maxSelections+'개 선택':'하나만 선택';
  let body='';
  if(comparison){
   for(const g of activeGroups(p,selectionMap(answers[q.questionId]))){
    body+='<section class="comparison"><p class="eyebrow">'+esc(g.id)+'</p><h2>'+esc(g.label)+'</h2>';
+   if(isRanked(g)) body+='<p class="muted">좋아하는 순서대로 선택해주세요. 선택한 항목을 다시 누르면 해제돼요.<br>선택하지 않은 항목은 이 비교 안에서 선호하지 않는 항목으로 기록돼요.</p><p class="rule">'+(Number.isInteger(g.minSelections)?'최소 '+g.minSelections+'개 선택':'선택 기준 준비 중')+'</p>'+(g.minSelections===0?'<button class="secondary" data-empty-ranked="'+esc(g.id)+'">이 비교에서 선호하는 항목 없음</button>':'');
    for(const url of g.overviewImages||[])body+='<div class="overview"><img src="'+esc(safeUrl(url))+'" alt="'+esc(g.label)+' 비교 이미지"><button class="zoom-button" data-zoom="'+esc(safeUrl(url))+'">전체 크게 보기 ↗</button></div>';
    body+='<div class="choices '+(g.options.some(o=>o.images?.length)?'':'text')+'">'+g.options.map(o=>optionMarkup(o,q,g.id)).join('')+'</div></section>';
   }
@@ -114,6 +118,9 @@ function render(){
   if(next===previous&&p.kind==='MULTIPLE_CHOICE')toast('최대 '+p.maxSelections+'개까지 선택할 수 있어요.');
   answers[q.questionId]=next;render();window.scrollTo(0,previousY);
   const target=Array.from(main.querySelectorAll('input')).find(el=>el.value===input.value&&el.dataset.group===input.dataset.group);target?.focus({preventScroll:true});
+ });
+ main.querySelectorAll('[data-empty-ranked]').forEach(button=>button.onclick=()=>{
+  answers[q.questionId]=choose(p,answers[q.questionId],null,button.dataset.emptyRanked);render();
  });
  document.querySelector('#back').onclick=()=>{if(step>0){step--;render();focusMain();}};
  document.querySelector('#next').onclick=()=>action(async()=>{
@@ -129,7 +136,17 @@ function updateNext(){
 }
 function answerLabels(q){
  const p=q.questionPayload,a=answers[q.questionId];
- if(p.kind==='COMPARISON'){const selected=selectionMap(a);return activeGroups(p,selected).map(g=>g.options.find(o=>o.id===selected[g.id])?.label).filter(Boolean).join(' / ');}
+ if(p.kind==='COMPARISON'){
+  const selected=selectionMap(a);
+  return activeGroups(p,selected).map(g=>{
+   if(!isRanked(g))return g.options.find(o=>o.id===selected[g.id])?.label;
+   const ids=selected[g.id];
+   if(!Array.isArray(ids))return null;
+   const ranked=ids.map((id,i)=>(i+1)+'위 '+g.options.find(o=>o.id===id)?.label).join(' · ');
+   const notPreferred=g.options.filter(o=>!ids.includes(o.id)).map(o=>o.label).join(' · ');
+   return ranked+' / 이 비교에서 비선호: '+(notPreferred||'없음');
+  }).filter(Boolean).join(' / ');
+ }
  const ids=a?.selectedOptionIds||[a?.selectedOptionId];return p.options.filter(o=>ids.includes(o.id)).map(o=>o.label).join(' · ');
 }
 function review(){
@@ -143,7 +160,7 @@ function review(){
  });
 }
 function evidenceCard(e,label){
- return '<article class="result-card"><p class="source">'+esc(e.questionId)+(e.comparisonId?' · '+esc(e.comparisonId):'')+'</p><h3>'+esc(label||e.prompt)+'</h3>'+e.selections.map(s=>imageMarkup(s.images,s.label)+'<p>'+esc(s.label)+'</p>').join('')+(e.alternatives?.length?'<p class="muted"><small>비교한 선택지: '+esc(e.alternatives.map(s=>s.label).join(' / '))+'<br>선택하지 않은 쪽이 싫다는 뜻은 아니에요.</small></p>':'')+'</article>';
+ return '<article class="result-card"><p class="source">'+esc(e.questionId)+(e.comparisonId?' · '+esc(e.comparisonId):'')+'</p><h3>'+esc(label||e.prompt)+'</h3>'+e.selections.map(s=>imageMarkup(s.images,s.label)+'<p>'+esc((s.rank?s.rank+'위 · ':'')+s.label)+'</p>').join('')+(e.notPreferred?.length?'<p class="muted">이 비교에서 선호하지 않은 항목: '+esc(e.notPreferred.map(s=>s.label).join(' / '))+'</p>':'')+(e.alternatives?.length?'<p class="muted"><small>비교한 선택지: '+esc(e.alternatives.map(s=>s.label).join(' / '))+'<br>선택하지 않은 쪽이 싫다는 뜻은 아니에요.</small></p>':'')+'</article>';
 }
 async function result(){
  const data=await api('/sessions/'+session.sessionId+'/preference-summary');
@@ -153,7 +170,7 @@ async function result(){
  const bridge=document.createElement('section');bridge.className='result-shop';bridge.innerHTML='<div><p class="eyebrow">BACK TO YOUR WARDROBE</p><p>발견한 취향을 떠올리며 컬렉션을 둘러보세요.</p></div><button class="secondary" id="result-shop">쇼핑몰로 돌아가기 ↗</button>';main.append(bridge);bridge.querySelector('button').onclick=shop;
  document.querySelector('#restart').onclick=selectApparel;
  document.querySelector('#download').onclick=()=>{
-  const lines=['TasteDNA — 나의 직접 선호 기록',data.title,'',...evidence.map(e=>e.questionId+(e.comparisonId?' / '+e.comparisonId:'')+' · '+e.prompt+'\n'+e.selections.map(s=>s.label).join(' / ')),'','종합 유형이나 심리 진단이 아닌 직접 선택한 취향 기록입니다.'];
+  const lines=['TasteDNA — 나의 직접 선호 기록',data.title,'',...evidence.map(e=>e.questionId+(e.comparisonId?' / '+e.comparisonId:'')+' · '+e.prompt+'\n'+e.selections.map(s=>(s.rank?s.rank+'위 ':'')+s.label).join(' / ')+(e.notPreferred?.length?'\n이 비교에서 선호하지 않은 항목: '+e.notPreferred.map(s=>s.label).join(' / '):'')),'','종합 유형이나 심리 진단이 아닌 직접 선택한 취향 기록입니다.'];
   const url=URL.createObjectURL(new Blob([lines.join('\n\n')],{type:'text/plain;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='TasteDNA.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  };

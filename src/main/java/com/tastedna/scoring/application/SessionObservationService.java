@@ -159,7 +159,7 @@ public class SessionObservationService {
 
             } else if ("COMPARISON".equals(kind)) {
                 var selections =
-                        ComparisonAnswerPayloadExtractor.extract(
+                        ComparisonAnswerPayloadExtractor.extractSelections(
                                 payload
                         );
 
@@ -185,17 +185,26 @@ public class SessionObservationService {
                     String comparisonId =
                             comparisonIdNode.stringValue();
 
-                    String selectedOptionId =
-                            selections.get(comparisonId);
-
-                    if (selectedOptionId == null) {
-                        throw new IllegalStateException(
-                                "INVALID_STORED_COMPARISON"
-                        );
+                    var selection = selections.get(comparisonId);
+                    if (selection.ranked()) {
+                        // 순위는 점수가 아니다. 기존 단일 비교 규칙에 합치지 않고 확정된 사실만 보존한다.
+                        for (int i = 0; i < selection.optionIds().size(); i++) {
+                            collected.add(new DirectObservationCollector.ParsedObservation(
+                                    definitionId, answer.getId().getQuestionId(), comparisonId + ":" + selection.optionIds().get(i),
+                                    new ObservationPayloadParser.ObservationValue("RANKED_COMPARISON_PREFERENCE",
+                                            Integer.toString(i + 1), "EXPLICIT_RANKED_SELECTION")));
+                        }
+                        for (String optionId : selection.notPreferredIds(comparison)) {
+                            collected.add(new DirectObservationCollector.ParsedObservation(
+                                    definitionId, answer.getId().getQuestionId(), comparisonId + ":" + optionId,
+                                    new ObservationPayloadParser.ObservationValue("RANKED_COMPARISON_NON_PREFERENCE",
+                                            "NOT_PREFERRED", "UNSELECTED_IN_RANKED_GROUP")));
+                        }
+                        continue;
                     }
 
                     comparisonOptions.add(
-                            comparisonId + ":" + selectedOptionId
+                            comparisonId + ":" + selection.optionIds().getFirst()
                     );
                 }
 
@@ -209,7 +218,7 @@ public class SessionObservationService {
                 );
             }
 
-            collected.addAll(
+            if (!selectedOptionIds.isEmpty()) collected.addAll(
                     collector.collectParsed(
                             definitionId,
                             answer.getId().getQuestionId(),
