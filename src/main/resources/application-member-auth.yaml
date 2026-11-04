@@ -1,0 +1,12 @@
+# 기본 프로필의 접근 차단은 유지하고 명시적으로 선택한 환경에서만 회원 인증을 제공한다.
+server:
+  servlet:
+    session:
+      timeout: 30m
+      tracking-modes: cookie
+      cookie:
+        name: FORMSESSION
+        http-only: true
+        secure: ${AUTH_COOKIE_SECURE:true}
+        same-site: lax
+        path: /

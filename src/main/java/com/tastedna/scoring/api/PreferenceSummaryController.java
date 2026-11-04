@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@Profile("local")
+@Profile({"local", "member-auth"})
 @RequestMapping("/api/v1/sessions/{sessionId}")
 public class PreferenceSummaryController {
     private final PreferenceSummaryService service;

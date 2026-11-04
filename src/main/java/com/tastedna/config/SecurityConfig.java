@@ -19,7 +19,7 @@ public class SecurityConfig {
     // local 프로필에서는 개발용 Basic 인증을 사용하며, 헬스 체크는 인증 없이 허용한다.
     // CSRF를 비활성화한 개발 환경 설정이므로 운영용 보안 정책으로 그대로 사용하지 않는다.
     @Bean
-    @Profile("local")
+    @Profile("local & !member-auth")
     public SecurityFilterChain localSecurity(HttpSecurity http)
             throws Exception {
 
@@ -41,7 +41,7 @@ public class SecurityConfig {
     // 환경 변수의 개발용 비밀번호로 테스트 회원 계정을 메모리에 생성한다.
     // 실제 쇼핑몰 회원 DB나 외부 인증 시스템과 연동하는 운영용 회원 관리는 아니다.
     @Bean
-    @Profile("local")
+    @Profile("local & !member-auth")
     public UserDetailsService localUsers(
             org.springframework.core.env.Environment environment) {
 
@@ -80,7 +80,7 @@ public class SecurityConfig {
     // local 이외의 프로필에서는 헬스 체크만 허용하고 나머지 요청을 차단한다.
     // 운영용 회원 인증 및 쇼핑몰 연동 보안이 구현되기 전까지 사용하는 기본 차단 정책이다.
     @Bean
-    @Profile("!local")
+    @Profile("!local & !member-auth")
     public SecurityFilterChain defaultSecurity(HttpSecurity http)
             throws Exception {
 
