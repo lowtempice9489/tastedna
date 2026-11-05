@@ -2,6 +2,7 @@ package com.tastedna.session.api;
 
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.api.dto.SessionResponse;
+import com.tastedna.session.api.dto.ApparelScope;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -15,8 +16,9 @@ public class ImageAssessmentController {
     public ImageAssessmentController(TestSessionService service) { this.service = service; }
 
     @PostMapping("/simple-image")
-    public SessionResponse start(Authentication authentication) {
-        return service.startImageSimple(authentication.getName());
+    public SessionResponse start(Authentication authentication,
+                                 @RequestParam(defaultValue = "mens") ApparelScope apparelScope) {
+        return service.startImageSimple(authentication.getName(), apparelScope);
     }
 }
 

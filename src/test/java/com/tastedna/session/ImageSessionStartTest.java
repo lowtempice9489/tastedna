@@ -3,6 +3,9 @@ package com.tastedna.session;
 import com.tastedna.definition.domain.*;
 import com.tastedna.definition.persistence.*;
 import com.tastedna.session.application.TestSessionService;
+import com.tastedna.session.api.dto.ApparelScope;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import com.tastedna.session.persistence.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
@@ -12,7 +15,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ImageSessionStartTest {
-    @Test void startsServerSelectedDefinitionWithoutChangingActiveDefinition() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void startsServerSelectedDefinitionWithoutChangingActiveDefinition(boolean explicitScope) {
         var definitions = mock(TestDefinitionRepository.class);
         var questions = mock(QuestionDefinitionRepository.class);
         var sessions = mock(TestSessionRepository.class);
@@ -31,13 +36,28 @@ class ImageSessionStartTest {
             rows.add(question);
         }
         when(questions.findByIdDefinitionIdOrderByDisplayOrderAsc(id)).thenReturn(rows);
-        var session = service.startImageSimple("test-member");
+        var session = explicitScope ? service.startImageSimple("test-member", ApparelScope.mens)
+                : service.startImageSimple("test-member");
         assertEquals(UUID.fromString(id), session.definitionId());
         assertEquals("mens", session.apparelScope().name());
         assertEquals("IN_PROGRESS", session.status());
         verify(definitions, never()).findByTestModeAndActiveTrue(anyString());
         verify(definitions, never()).save(any());
-        verify(sessions).saveAndFlush(any());
+        verify(sessions).saveAndFlush(argThat(saved -> saved.getMallMemberId().equals("test-member")
+                && saved.getApparelScope().equals("MENS") && saved.getDefinitionId().equals(id)));
+    }
+    @Test void womensDraftOrMissingDefinitionCannotCreateSession() {
+        var definitions = mock(TestDefinitionRepository.class);
+        var questions = mock(QuestionDefinitionRepository.class);
+        var sessions = mock(TestSessionRepository.class);
+        var answers = mock(SessionAnswerRepository.class);
+        var service = new TestSessionService(definitions, questions, sessions, answers, JsonMapper.builder().build());
+        var exception = assertThrows(ResponseStatusException.class,
+                () -> service.startImageSimple("test-member", ApparelScope.womens));
+        assertEquals(422, exception.getStatusCode().value());
+        assertEquals("IMAGE_DEFINITION_NOT_READY", exception.getReason());
+        // 미완성 여성복을 기존 남성복 또는 모드별 활성 정의로 대체하지 않는다.
+        verifyNoInteractions(definitions, questions, sessions, answers);
     }
     @Test void existingInProgressSessionIsNotReplaced() {
         var definitions = mock(TestDefinitionRepository.class);

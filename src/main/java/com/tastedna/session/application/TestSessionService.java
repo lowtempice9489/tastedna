@@ -56,8 +56,19 @@ public class TestSessionService {
     // 이미지 정의는 서버가 선택하고 기존 활성 정의와 세션은 변경하지 않는다.
     @Transactional
     public SessionResponse startImageSimple(String memberId) {
-        return startInternal(memberId, new StartSessionRequest(Mode.SIMPLE, ApparelScope.mens),
-                "33333333-3333-4333-8333-333333333333");
+        return startImageSimple(memberId, ApparelScope.mens);
+    }
+
+    @Transactional
+    public SessionResponse startImageSimple(String memberId, ApparelScope apparelScope) {
+        // 승인된 정의만 범위별로 연결한다. 여성복 초안은 개수만 맞아도 사용할 수 없다.
+        // 여성복 정의와 필수 문구·선택 규칙이 확정되기 전까지 다른 활성 정의로 대체하지 않는다.
+        String definitionId = switch (apparelScope) {
+            case mens -> "33333333-3333-4333-8333-333333333333";
+            case womens -> throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_CONTENT, "IMAGE_DEFINITION_NOT_READY");
+        };
+        return startInternal(memberId, new StartSessionRequest(Mode.SIMPLE, apparelScope), definitionId);
     }
 
     private SessionResponse startInternal(String memberId, StartSessionRequest request, String imageDefinitionId) {
