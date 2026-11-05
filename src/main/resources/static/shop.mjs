@@ -2,7 +2,25 @@
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const image=url=>url?.startsWith('/assets/gender/')?encodeURI(url):'';
 export async function storefront(main, startTaste) {
- main.innerHTML='<section class="shop-hero"><div><p class="eyebrow">FORM / DEMO STORE · ISSUE 01</p><h1>입는 것에서<br>나를 발견하는 일.</h1><p class="muted">오늘의 옷을 고르기 전에,<br>내가 좋아하는 것부터 알아보세요.</p><a class="primary" href="#collection">컬렉션 둘러보기 ↓</a></div><div class="shop-cover"><img src="/assets/gender/male/Q10/Q10_C.png" alt="니트 가디건과 여유로운 팬츠 착장"><span>Everyday, in your own way.</span></div></section><section class="taste-banner"><div><p class="eyebrow">A LITTLE MORE PERSONAL</p><h2>나에게 어울리는 옷보다,<br>내가 끌리는 옷을 찾는 시간.</h2><p>TasteDNA · 10개의 질문으로 발견하는 나의 패션 취향</p></div><button class="primary" id="taste-entry">내 TasteDNA 알아보기 ↗</button></section><section id="collection"><div class="collection-head"><div><p class="eyebrow">THE EDIT</p><h2>취향을 탐색하는 컬렉션</h2></div><span class="muted">전시용 샘플 · 실제 판매 상품이 아닙니다</span></div><div id="product-filters" class="filters"></div><div id="products" class="product-grid"><p>상품을 불러오고 있어요.</p></div></section>';
+ main.innerHTML=`<div class="form-home">
+ <section class="commerce-promotions" aria-label="FORM 스타일 에디트">
+  <div class="commerce-hero">
+   <div class="commerce-copy"><p class="eyebrow">FORM STYLE EDIT / 01</p><h1>가벼워지는 계절,<br>새로운 스타일.</h1><p>일상에 편안함과 세련됨을 더하는<br>FORM의 스타일 에디트를 만나보세요.</p><a class="primary" href="#collection">컬렉션 둘러보기 <span aria-hidden="true">↗</span></a><small>EVERYDAY, IN YOUR OWN WAY.</small></div>
+   <img class="commerce-model" src="/assets/gender/male/Q10/J.png" alt="네이비 재킷과 화이트 셔츠를 조합한 단정한 봄 착장">
+  </div>
+  <div class="commerce-side">
+   <a class="edit-card" href="#collection" data-edit-category="재킷"><div><p class="eyebrow">THE OUTER EDIT</p><h2>일상을 바꾸는<br>아우터 한 벌</h2><span>재킷 살펴보기 ↗</span></div><img src="/assets/gender/male/Q06/TasteDNA_Q06_E.png" alt="데님 재킷 착장"></a>
+   <a class="edit-card" href="#collection" data-edit-category="텍스처"><div><p class="eyebrow">TOUCH & TEXTURE</p><h2>눈길이 머무는<br>소재의 표정</h2><span>텍스처 살펴보기 ↗</span></div><img src="/assets/gender/male/Q06/TasteDNA_Q06_G.png" alt="아이보리 텍스처 재킷 착장"></a>
+  </div>
+ </section>
+ <div class="commerce-note"><span>FORM / EXHIBITION COLLECTION</span><p>좋아하는 옷을 고르는 일에서, 나를 알아가는 일까지.</p><span>전시용 데모 스토어</span></div>
+ <section class="taste-banner" aria-labelledby="taste-banner-title">
+  <div><p class="eyebrow">FORM의 특별한 취향 기록</p><h2 id="taste-banner-title">TasteDNA</h2><h3>나의 취향에서 시작하는, 조금 더 나다운 선택.</h3><p>마음이 가는 색과 스타일을 고르고, 직접 선택한 취향을 발견해보세요.</p></div>
+  <div class="banner-motif" aria-hidden="true"><span>Style</span><i></i><i></i><i></i><span>Taste</span></div>
+  <div class="banner-action"><button class="primary" id="taste-entry">TasteDNA 알아보기 <span aria-hidden="true">↗</span></button><small>10개의 질문 · 나의 직접 선호 기록</small></div>
+ </section>
+ <section id="collection" aria-labelledby="collection-title"><div class="collection-head"><div><p class="eyebrow">THE FORM COLLECTION</p><h2 id="collection-title">지금, 눈여겨볼 스타일</h2></div><span class="muted">전시용 샘플 · 실제 판매 상품이 아닙니다</span></div><div id="product-filters" class="filters"></div><div id="products" class="product-grid"><p>상품을 불러오고 있어요.</p></div></section>
+ </div>`;
  main.querySelector('#taste-entry').onclick=startTaste;
  try{
   const response=await fetch('/api/v1/demo/products',{cache:'no-store'});
@@ -17,6 +35,7 @@ export async function storefront(main, startTaste) {
    main.querySelectorAll('[data-category]').forEach(b=>b.onclick=()=>render(b.dataset.category));
    main.querySelectorAll('[data-product]').forEach(b=>b.onclick=()=>detail(products.find(p=>p.id===b.dataset.product),startTaste));
   };
+  main.querySelectorAll('[data-edit-category]').forEach(link=>link.onclick=()=>render(categories.includes(link.dataset.editCategory)?link.dataset.editCategory:'전체'));
   render('전체');
  }catch{
   const target=main.querySelector('#products');

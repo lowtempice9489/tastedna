@@ -51,8 +51,23 @@ async function action(fn){
 }
 function home(){
  history.replaceState(null,'','#taste');
- main.innerHTML='<section class="hero"><div class="hero-copy"><p class="eyebrow">DISCOVER YOUR TASTE · SIMPLE TEST</p><h1>내가 끌리는 것들,<br>그 안에 있는<br><em>나의 취향.</em></h1><p class="muted">설명하기 어려웠던 나의 스타일.<br>열 가지 질문과 눈길이 가는 착장으로<br>당신만의 취향을 발견해보세요.</p><div class="hero-meta"><span>10개의 질문</span><span>텍스트 + 이미지</span><span>남성 · 여성</span></div><button class="primary" id="begin">내 취향 알아보기 <span>↗</span></button></div><div class="hero-gallery"><img src="'+asset('Q10/Q10_A.png')+'" alt="편안한 니트와 팬츠 착장"><img src="'+asset('Q10/J.png')+'" alt="재킷을 활용한 착장"><span class="gallery-tag">A little more you.</span></div></section><section class="intro-note"><span>01 &nbsp; 평소 입는 옷보다, 실제로 마음이 가는 옷을 골라요.</span><span>02 &nbsp; 선택한 취향을 근거와 함께 확인해요.</span><span>03 &nbsp; 제출 전에는 언제든 답을 바꿀 수 있어요.</span></section>';
+ main.innerHTML=`<div class="atelier">
+ <section class="atelier-hero" aria-labelledby="atelier-title">
+  <div class="atelier-copy"><p class="atelier-kicker">FORM의 특별한 취향 기록 <span aria-hidden="true">/</span> YOUR PERSONAL ATELIER</p><h1 id="atelier-title">TasteDNA</h1><h2>검색보다 먼저,<br><em>나의 취향</em>을 발견하는 시간.</h2><p class="atelier-description">설명하기 어려웠던 내가 좋아하는 것들.<br>작은 선택을 모아, 나만의 취향을 기록해보세요.</p><div class="atelier-actions"><button class="primary" id="begin">테스트 시작하기 <span aria-hidden="true">↗</span></button><a class="secondary" href="#taste-guide">이용 과정 보기 ↓</a></div><p class="atelier-availability">지금은 남성복 Simple 10문항으로 시작할 수 있어요.</p></div>
+  <div class="atelier-art" aria-hidden="true"><div class="atelier-orbit orbit-one"></div><div class="atelier-orbit orbit-two"></div><span class="art-word word-style">Style</span><span class="art-word word-mood">Mood</span><span class="art-word word-taste">Taste</span><div class="material-card"><div class="material-weave"></div><div class="material-caption"><span>THE TEXTURE OF YOU</span><b>Every shade.<br>Every little detail.</b></div></div><div class="palette-card"><span>PERSONAL NOTES / 01</span><div class="palette-swatches"><i></i><i></i><i></i><i></i></div><em>A little more you.</em></div><span class="art-index">AN EXPLORATION OF PERSONAL TASTE</span></div>
+ </section>
+ <div class="atelier-philosophy"><p>취향은 한 가지 모습으로<br>정의되지 않으니까.</p><div><span>색감</span><span>질감</span><span>분위기</span><span>스타일</span></div><small>마음이 가는 선택을 있는 그대로 기록해요.</small></div>
+ <section class="atelier-guide" id="taste-guide" aria-labelledby="guide-title"><div class="guide-heading"><span></span><h2 id="guide-title"><b>TasteDNA</b>, 이렇게 이용해보세요</h2><span></span></div><div class="guide-grid">
+ <article><span class="guide-number">01 / EXPLORE</span><div class="guide-symbol" aria-hidden="true">◌</div><h3>탐색할 취향 선택</h3><p>살펴보고 싶은 의류를 선택해요.<br>현재 남성복 테스트를 이용할 수 있어요.</p></article>
+ <article><span class="guide-number">02 / CHOOSE</span><div class="guide-symbol" aria-hidden="true">≡</div><h3>마음이 가는 쪽으로</h3><p>10개의 질문에 답하며 색, 스타일,<br>디테일에 대한 선호를 알려주세요.</p></article>
+ <article><span class="guide-number">03 / DISCOVER</span><div class="guide-symbol" aria-hidden="true">◎</div><h3>나의 취향 기록 확인</h3><p>직접 고른 선택과 그 근거를<br>하나의 선호 요약으로 돌아보세요.</p></article>
+ <article><span class="guide-number">04 / BROWSE</span><div class="guide-symbol" aria-hidden="true">↗</div><h3>새로운 시선으로 탐색</h3><p>발견한 취향을 떠올리며<br>FORM의 데모 컬렉션을 둘러보세요.</p></article>
+ </div><p class="guide-footnote">종합 취향 유형 판별이나 맞춤 상품 추천이 아닌, 직접 선택한 선호를 기록하는 서비스입니다.</p></section>
+ </div>`;
  document.querySelector('#begin').onclick=selectApparel;
+ document.querySelector('.atelier-actions a').onclick=e=>{
+  e.preventDefault();document.querySelector('#taste-guide').scrollIntoView({block:'start'});
+ };
 }
 function selectApparel(){
  history.replaceState(null,'','#taste');

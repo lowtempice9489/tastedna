@@ -26,6 +26,17 @@ function screen(){
  return {context,node,calls,client,run:code=>vm.runInContext(code,context)};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
+test('atelier cover retains wardrobe selection and FORM login entry without starting an anonymous assessment',()=>{
+ const {run,node,calls}=screen();
+ run('home();');
+ assert.match(node('main').innerHTML,/id="taste-guide"/);
+ assert.match(node('main').innerHTML,/남성복 Simple 10문항/);
+ node('#begin').onclick();
+ assert.match(node('main').innerHTML,/여성 · 준비 중/);
+ node('#choose-mens').onclick();
+ assert.match(node('main').innerHTML,/FORM 로그인/);
+ assert.equal(run('returnTo'),'taste');assert.equal(calls.length,0);
+});
 test('same-document session link requires login and preserves destination',()=>{
  const {run,node,calls}=screen();
  run("location.hash='#session=saved-link';window.onhashchange();");
