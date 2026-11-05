@@ -50,6 +50,7 @@ class MemberAuthHttpTest {
     @MockitoBean AuthAttemptLimiter limiter;
     @MockitoBean com.tastedna.demo.DemoProductRepository products;
     @MockitoBean com.tastedna.scoring.application.StyleCoreCandidateService initialCandidates;
+    @MockitoBean com.tastedna.scoring.application.SessionObservationService candidateObservations;
     @MockitoBean com.tastedna.scoring.persistence.ResultCandidateRepository candidateCatalog;
     private final Map<String, FormMember> stored = new HashMap<>();
     private static final String PASSWORD = "a long test password";

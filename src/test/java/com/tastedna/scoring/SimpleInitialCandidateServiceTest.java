@@ -31,7 +31,7 @@ class SimpleInitialCandidateServiceTest {
     final StyleCoreDirectMappingRepository mappings = mock(StyleCoreDirectMappingRepository.class);
     final ResultCandidateRepository catalog = mock(ResultCandidateRepository.class);
     final StyleCoreCandidateService core = new StyleCoreCandidateService(observations, mapper, mappings, null, null, null, null);
-    final SimpleInitialCandidateService service = new SimpleInitialCandidateService(sessions, answers, questions, core, catalog, mapper);
+    final SimpleInitialCandidateService service = new SimpleInitialCandidateService(sessions, answers, questions, core, catalog, mapper, observations);
     final UUID id = UUID.randomUUID();
     final UUID definition = UUID.fromString("33333333-3333-4333-8333-333333333333");
     JsonNode question;
@@ -119,7 +119,7 @@ class SimpleInitialCandidateServiceTest {
         when(resolver.resolve(definition.toString(), "Q02", List.of("R03", "R01"))).thenReturn(rules);
         var raw = new SessionObservationService(answers, sessionRepository, new DirectObservationCollector(resolver), mapper);
         var realCore = new StyleCoreCandidateService(raw, mapper, mappings, null, null, null, null);
-        var realService = new SimpleInitialCandidateService(sessions, answers, questions, realCore, catalog, mapper);
+        var realService = new SimpleInitialCandidateService(sessions, answers, questions, realCore, catalog, mapper, raw);
         var response = realService.find("member", id);
         assertEquals(List.of("R01", "R03"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
         assertEquals("미니멀", response.candidates().getFirst().sources().getFirst().optionLabel());
@@ -149,5 +149,55 @@ class SimpleInitialCandidateServiceTest {
         when(sessions.get("other", id)).thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "SESSION_NOT_FOUND"));
         assertEquals(404, assertThrows(ResponseStatusException.class, () -> service.find("other", id)).getStatusCode().value());
         verifyNoInteractions(answers, observations, catalog);
+    }
+    @Test void additionalFactsRemainUnresolvedWithoutPromotingExperimentalMappings() {
+        select(definition, "R01");
+        var facts = new ArrayList<RawObservationAggregator.RawObservation>();
+        facts.add(fact("Q02", "R01", "DIRECT_FASHION_LOOK_PREFERENCE", "미니멀", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q01", "A", "DIRECT_COLOR_PREFERENCE", "블랙", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q03", "S02", "DIRECT_SILHOUETTE_PREFERENCE", "레귤러", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q04", "P01", "DIRECT_PATTERN_GRAPHIC_PREFERENCE", "무지", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q05", "A", "DIRECT_CLOTHING_PREFERENCE", "상의 A", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q06", "B", "DIRECT_OUTFIT_PREFERENCE", "착장 B", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q07", "C", "DIRECT_OUTFIT_AVOIDANCE", "착장 C", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q08", "C01:A", "DIRECT_COMPARISON_PREFERENCE", "비교 A", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q09", "C02:A", "RANKED_COMPARISON_PREFERENCE", "2", "EXPLICIT_RANKED_SELECTION"));
+        facts.add(fact("Q09", "C02:B", "RANKED_COMPARISON_PREFERENCE", "1", "EXPLICIT_RANKED_SELECTION"));
+        facts.add(fact("Q09", "C02:C", "RANKED_COMPARISON_NON_PREFERENCE", "NOT_PREFERRED", "UNSELECTED_IN_RANKED_GROUP"));
+        facts.add(fact("Q09", "C01:A", "DIRECT_COMBINATION_PREFERENCE", "A · 절제된 코디 그룹", "EXPLICIT_SELECTION"));
+        facts.add(fact("Q10", "D", "DIRECT_FINAL_OUTFIT_PREFERENCE", "착장 D", "EXPLICIT_SELECTION"));
+        facts.add(facts.get(6));
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        var result = service.find("member", id);
+        var evidence = result.candidates().getFirst().evidence();
+        assertEquals(result.candidates().getFirst().sources(), evidence.positive());
+        assertTrue(evidence.avoidanceOrConflict().isEmpty());
+        assertEquals(12, evidence.unresolved().size());
+        assertEquals("C01", evidence.unresolved().stream().filter(o -> o.observationType().equals("DIRECT_COMBINATION_PREFERENCE")).findFirst().orElseThrow().comparisonId());
+        assertEquals(1, evidence.unresolved().stream().filter(o -> o.observationType().equals("DIRECT_OUTFIT_AVOIDANCE")).count());
+        var ranked = evidence.unresolved().stream().filter(o -> o.rank() != null).toList();
+        assertEquals(List.of("C02:B", "C02:A"), ranked.stream().map(SimpleInitialCandidateService.Observation::optionId).toList());
+        assertEquals(List.of(1, 2), ranked.stream().map(SimpleInitialCandidateService.Observation::rank).toList());
+        assertEquals("C02", ranked.getFirst().comparisonId());
+        assertEquals(1, evidence.unresolved().stream().filter(o -> o.evidenceType().equals("UNSELECTED_IN_RANKED_GROUP")).count());
+        Collections.reverse(facts);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        assertEquals(result, service.find("member", id));
+    }
+    @Test void noAvoidanceAndUnselectedOrdinaryOptionsNeverBecomeCandidateConflict() {
+        select(definition, "R01");
+        var facts = List.of(fact("Q02", "R01", "DIRECT_FASHION_LOOK_PREFERENCE", "미니멀", "EXPLICIT_SELECTION"),
+                fact("Q07", "NONE", "NO_EXPLICIT_OUTFIT_AVOIDANCE", "없음", "EXPLICIT_SELECTION"));
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        var evidence = service.find("member", id).candidates().getFirst().evidence();
+        assertTrue(evidence.avoidanceOrConflict().isEmpty());
+        assertEquals(1, evidence.unresolved().size());
+        assertEquals("NO_EXPLICIT_OUTFIT_AVOIDANCE", evidence.unresolved().getFirst().observationType());
+    }
+    RawObservationAggregator.RawObservation fact(String q, String option, String type, String value, String evidence) {
+        return new RawObservationAggregator.RawObservation(definition.toString(), type, value, evidence, q, option, 2);
+    }
+    Map<String, List<RawObservationAggregator.RawObservation>> group(List<RawObservationAggregator.RawObservation> facts) {
+        return facts.stream().collect(java.util.stream.Collectors.groupingBy(RawObservationAggregator.RawObservation::type));
     }
 }
