@@ -303,10 +303,13 @@ function evidenceCard(e,label){
  return '<article class="result-card"><p class="source">'+esc(e.questionId)+(e.comparisonId?' · '+esc(e.comparisonId):'')+'</p><h3>'+esc(label||e.prompt)+'</h3>'+e.selections.map(s=>imageMarkup(s.images,s.label)+'<p>'+esc((s.rank?s.rank+'위 · ':'')+s.label)+'</p>').join('')+(e.notPreferred?.length?'<p class="muted report-not-preferred">이 비교에서 선호하지 않은 항목: '+esc(e.notPreferred.map(s=>s.label).join(' / '))+'</p>':'')+(e.alternatives?.length?'<p class="muted report-alternatives"><small>비교한 선택지: '+esc(e.alternatives.map(s=>s.label).join(' / '))+'<br>선택하지 않은 쪽이 싫다는 뜻은 아니에요.</small></p>':'')+'</article>';
 }
 async function result(){
- const data=await api('/sessions/'+session.sessionId+'/preference-summary');
+ const resultSessionId=session.sessionId;
+ const data=await api('/sessions/'+resultSessionId+'/preference-summary');
+ if(data.session?.status!=='SUBMITTED')throw Object.assign(new Error('SESSION_NOT_SUBMITTED'),{code:'SESSION_NOT_SUBMITTED'});
  const evidence=data.evidence,byQ=id=>evidence.find(e=>e.questionId===id);
  const textCards=[['Q01','마음이 가는 색'],['Q02','마음이 가는 스타일'],['Q03','좋아하는 실루엣'],['Q04','눈길이 가는 패턴']];
  main.innerHTML='<div class="taste-report"><section class="result-heading"><p class="eyebrow">FORM · TasteDNA</p><p class="report-edition">나의 취향 리포트</p><span class="tag">나의 직접 선호 기록</span><h1>'+esc(data.title)+'</h1><p class="muted">'+esc(data.description)+'</p></section><section class="report-panel" aria-labelledby="direct-preferences"><p class="eyebrow">YOUR PERSONAL SELECTIONS</p><h2 id="direct-preferences">직접 고른 선호 항목</h2><div class="result-grid report-keywords">'+textCards.filter(([id])=>byQ(id)).map(([id,label])=>'<article class="result-card"><p class="source">'+id+'</p><h3>'+label+'</h3><div class="chips">'+(byQ(id)?.selections||[]).map(s=>'<span class="chip">'+esc(s.label)+'</span>').join('')+'</div></article>').join('')+'</div></section><section class="result-section"><p class="eyebrow">THE LOOKS YOU CHOSE</p><h2>당신의 눈길이 머문 착장</h2><div class="result-grid">'+[['Q05','첫눈에 끌린 착장'],['Q06','내 옷으로 고른 옷'],['Q10','마지막에 선택한 착장']].filter(([id])=>byQ(id)).map(([id,label])=>evidenceCard(byQ(id),label)).join('')+'</div></section><section class="result-section"><p class="eyebrow">SMALL DETAILS, PERSONAL CHOICES</p><h2>디테일과 조합에서 발견한 취향</h2><div class="evidence-list">'+evidence.filter(e=>['Q08','Q09'].includes(e.questionId)).map(e=>evidenceCard(e)).join('')+'</div></section><section class="result-section avoidance"><p class="eyebrow">YOUR OWN BOUNDARIES</p><h2>내 옷으로는 피하고 싶은 것</h2>'+(byQ('Q07')?(byQ('Q07').meaning==='NO_EXPLICIT_AVOIDANCE'?'<p>이번 선택에서는 딱히 피하고 싶은 착장이 없었어요.</p>':'<p class="muted">직접 피하고 싶다고 고른 착장만 담았어요.</p><div class="result-grid">'+byQ('Q07').selections.map(s=>evidenceCard({...byQ('Q07'),selections:[s]},'회피한 착장')).join('')+'</div>'):'')+'</section><div class="result-note"><p>이 결과는 응답에 기반한 패션 선호 기록입니다. 성격이나 심리 상태를 진단하지 않으며, 종합 패션 유형은 아직 확정하지 않습니다. 첫인상과 마지막 선택이 달라도 서로 다른 순간의 선호로 함께 남겨요.</p><details><summary>기록 정보</summary><p>정의 '+esc(data.session.definitionId)+'<br>답변 버전 '+data.session.revision+' · 제출 완료</p></details></div><div class="result-actions"><button class="secondary" id="download">내 취향 기록 내려받기</button><button class="primary" id="restart">새로운 취향 기록 시작 →</button></div></div>';
+ const products=document.createElement('section');products.className='matched-products';products.setAttribute('aria-live','polite');products.innerHTML='<p class="muted">연결된 FORM 전시 상품을 확인하고 있어요.</p>';main.append(products);
  const bridge=document.createElement('section');bridge.className='result-shop';bridge.innerHTML='<div><p class="eyebrow">BACK TO YOUR WARDROBE</p><p>발견한 취향을 떠올리며 컬렉션을 둘러보세요.</p></div><button class="secondary" id="result-shop">쇼핑몰로 돌아가기 ↗</button>';main.append(bridge);bridge.querySelector('button').onclick=shop;
  document.querySelector('#restart').onclick=selectApparel;
  document.querySelector('#download').onclick=()=>{
@@ -315,6 +318,14 @@ async function result(){
   const a=document.createElement('a');a.href=url;a.download='TasteDNA.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  };
  bindZoom();
+ // 리포트를 먼저 표시하고 상품 조회 실패는 이 영역 안에서만 안내한다.
+ const heading='<p class="eyebrow">FORM · DEMO COLLECTION</p><h2>내가 선택한 착장과 연결된 FORM 전시 상품</h2><p class="muted">직접 선택한 이미지와 같은 이미지를 사용하는 전시 상품입니다. 상품명과 가격은 시연용 예시입니다.</p>';
+ try{
+  const matched=await api('/sessions/'+resultSessionId+'/matched-demo-products');
+  products.innerHTML=heading+(matched.products.length?'<div class="matched-product-grid">'+matched.products.map(p=>'<article class="matched-product-card"><img src="'+esc(safeUrl(p.imageUrl))+'" alt="'+esc(p.name)+'" loading="lazy"><div><span class="tag">FORM 전시 상품</span><h3>'+esc(p.name)+'</h3><p class="matched-product-price">'+esc(Number(p.price).toLocaleString('ko-KR'))+'원</p><p class="source">선택 근거: '+p.evidence.map(e=>esc(e.questionId)+' · '+esc(e.optionId)).join(' / ')+'</p></div></article>').join('')+'</div>':'<p class="matched-product-state">이번 선택과 연결된 FORM 전시 상품이 없습니다.</p>');
+ }catch{
+  products.innerHTML=heading+'<p class="matched-product-state">전시 상품을 불러오지 못했어요. 직접 선호 기록은 위에서 확인할 수 있습니다.</p>';
+ }
 }
 function bindZoom(){
  main.querySelectorAll('[data-zoom]').forEach(b=>b.onclick=()=>{dialog.querySelector('img').src=b.dataset.zoom;dialog.querySelector('img').alt='선택지 원본 크게 보기';dialog.showModal();});

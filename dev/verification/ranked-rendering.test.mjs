@@ -60,8 +60,8 @@ test('report renders supplied evidence only and preserves revisit, restart and s
   return nodes.get(selector);
  };
  const shopButton={};
- context.document.createElement=()=>({querySelector:()=>shopButton});
- context.data={title:'서버의 제목 <확인>',description:'서버 설명',session:{definitionId:'fixture',revision:3},evidence:[
+ context.document.createElement=()=>({querySelector:()=>shopButton,setAttribute(){}});
+ context.data={title:'서버의 제목 <확인>',description:'서버 설명',session:{definitionId:'fixture',revision:3,status:'SUBMITTED'},evidence:[
   {questionId:'Q02',prompt:'스타일',selections:[{label:'실제 선택 스타일',images:[]}]},
   {questionId:'Q08',comparisonId:'C01',prompt:'비교 기록',selections:[{label:'실제 선택 A',images:[]}],alternatives:[{label:'대안 B'}]},
   {questionId:'Q07',prompt:'회피',meaning:'EXPLICIT_AVOIDANCE',selections:[{label:'실제 회피 C',images:[]}]}
@@ -78,7 +78,7 @@ test('report renders supplied evidence only and preserves revisit, restart and s
  await vm.runInContext('result()',context);
  const revisited=vm.runInContext('main.innerHTML',context);
  assert.match(revisited,/재조회한 서버 제목/);assert.doesNotMatch(revisited,/실제 선택 스타일|피하고 싶은 착장이 없었어요/);
- assert.equal(vm.runInContext('requests.join(",")',context),'/sessions/saved/preference-summary,/sessions/saved/preference-summary');
+ assert.equal(vm.runInContext('requests.join(",")',context),'/sessions/saved/preference-summary,/sessions/saved/matched-demo-products,/sessions/saved/preference-summary,/sessions/saved/matched-demo-products');
 });
 test('rank badges, review, result and download preserve saved ranking',async()=>{
  const context=renderer();
@@ -108,12 +108,12 @@ test('rank badges, review, result and download preserve saved ranking',async()=>
    if(!nodes.has(selector))nodes.set(selector,{innerHTML:'',querySelector:()=>({}),querySelectorAll:()=>[],append(){}});
    return nodes.get(selector);
  };
- context.document.createElement=()=>({querySelector:()=>({}),click(){}});
+ context.document.createElement=()=>({querySelector:()=>({}),click(){},setAttribute(){}});
  vm.runInContext('main.append=()=>{}',context);
  let blob;
  context.Blob=Blob;context.URL={createObjectURL(value){blob=value;return 'blob:test';},revokeObjectURL(){}};
  context.setTimeout=()=>0;
- context.data={title:'테스트',description:'',session:{definitionId:'fixture',revision:1},evidence:[context.evidence,
+ context.data={title:'테스트',description:'',session:{definitionId:'fixture',revision:1,status:'SUBMITTED'},evidence:[context.evidence,
    ...['Q05','Q06','Q07','Q10'].map(questionId=>({questionId,selections:[],alternatives:[],meaning:'NO_EXPLICIT_AVOIDANCE'}))]};
  vm.runInContext("session={sessionId:'fixture'};api=async()=>data",context);
  await vm.runInContext('result()',context);
@@ -121,4 +121,32 @@ test('rank badges, review, result and download preserve saved ranking',async()=>
  const download=await blob.text();
  assert.match(download,/1위 항목 B \/ 2위 항목 A/);
  assert.match(download,/이 비교에서 선호하지 않은 항목: 항목 C/);
+});
+
+test('matched demo products render server fields, empty and failure states without losing report',async()=>{
+ for(const outcome of ['products','empty','failure']){
+  const context=renderer(),sections=[];
+  context.document.createElement=()=>{const e={setAttribute(){},querySelector:()=>({})};sections.push(e);return e;};
+  context.data={title:'나의 직접 선호 기록',description:'서버 리포트',session:{status:'SUBMITTED',definitionId:'def',revision:10},evidence:[]};
+  context.matched={products:outcome==='products'?[{id:'look-01',name:'서버 상품 <A>',imageUrl:'/assets/gender/male/Q06/TasteDNA_Q06_A.png',price:59000,demo:true,evidence:[{questionId:'Q06',optionId:'A'}]}]:[]};
+  context.fail=outcome==='failure';
+  vm.runInContext("main.append=()=>{};session={sessionId:'saved'};api=async path=>{if(path.endsWith('/preference-summary'))return data;if(fail)throw new Error('network');return matched}",context);
+  await vm.runInContext('result()',context);
+  assert.match(vm.runInContext('main.innerHTML',context),/나의 직접 선호 기록/);
+  const html=sections.find(e=>e.className==='matched-products').innerHTML;
+  assert.match(html,/내가 선택한 착장과 연결된 FORM 전시 상품/);
+  assert.doesNotMatch(html,/추천|유사도|점수/);
+  if(outcome==='products'){
+   assert.match(html,/서버 상품 &lt;A&gt;/);assert.match(html,/59,000원/);
+   assert.match(html,/Q06 · A/);assert.match(html,/src="\/assets\/gender\/male\/Q06\/TasteDNA_Q06_A.png"/);
+  }else assert.match(html,outcome==='empty'?/연결된 FORM 전시 상품이 없습니다/:/전시 상품을 불러오지 못했어요/);
+ }
+});
+
+test('unsubmitted report cannot render or request matched products',async()=>{
+ const context=renderer();
+ vm.runInContext("session={sessionId:'pending'};var calls=[];api=async path=>{calls.push(path);return {session:{status:'IN_PROGRESS'}}}",context);
+ await assert.rejects(vm.runInContext('result()',context),/SESSION_NOT_SUBMITTED/);
+ assert.equal(vm.runInContext('calls.length',context),1);
+ assert.doesNotMatch(vm.runInContext('main.innerHTML',context),/matched-products|FORM 전시 상품/);
 });
