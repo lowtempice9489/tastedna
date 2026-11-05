@@ -64,17 +64,35 @@ function home(){
  <article><span class="guide-number">04 / BROWSE</span><div class="guide-symbol" aria-hidden="true">↗</div><h3>새로운 시선으로 탐색</h3><p>발견한 취향을 떠올리며<br>FORM의 데모 컬렉션을 둘러보세요.</p></article>
  </div><p class="guide-footnote">종합 취향 유형 판별이나 맞춤 상품 추천이 아닌, 직접 선택한 선호를 기록하는 서비스입니다.</p></section>
  </div>`;
- document.querySelector('#begin').onclick=selectApparel;
+ document.querySelector('#begin').onclick=selectCategory;
  document.querySelector('.atelier-actions a').onclick=e=>{
   e.preventDefault();document.querySelector('#taste-guide').scrollIntoView({block:'start'});
  };
+}
+function selectCategory(){
+ history.replaceState(null,'','#taste');
+ // 준비 중 카드는 버튼으로 만들지 않아 공통 요청 처리 후에도 활성화되지 않는다.
+ main.innerHTML=`<section class="category-screen" aria-labelledby="category-title">
+ <ol class="category-progress" aria-label="취향 탐색 과정"><li aria-current="step"><span>01</span> 카테고리 선택</li><li><span>02</span> 테스트 진행</li><li><span>03</span> 기록 확인</li></ol>
+ <p class="eyebrow">TASTEDNA / EXPLORE YOUR TASTE</p><h1 id="category-title">어떤 취향을 탐색해볼까요?</h1><p class="category-description">마음이 가는 카테고리에서 나의 취향을 발견해보세요.</p>
+ <div class="category-grid">
+ <button type="button" class="category-card category-available" id="category-apparel"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M22 12 10 18 3 31l12 7 5-8v25h24V30l5 8 12-7-7-13-12-6c-1 10-19 10-20 0Z"/></svg><span class="category-name">의류</span><span class="category-detail">색과 스타일, 나에게 끌리는 옷</span><span class="category-state">취향 탐색하기 ↗</span></button>
+ <article class="category-card category-pending" aria-disabled="true"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M14 30V18q0-6 6-6h24q6 0 6 6v12M12 27q-7 0-7 7v15h54V34q0-7-7-7t-7 7v5H19v-5q0-7-7-7ZM13 49v7m38-7v7"/></svg><h2 class="category-name">리빙</h2><p class="category-detail">머물고 싶은 공간의 분위기</p><span class="category-state">준비 중</span></article>
+ <article class="category-card category-pending" aria-disabled="true"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M25 23V12h14v11M32 12V6h14M23 23h18l6 12v21H17V35ZM18 38h28"/></svg><h2 class="category-name">뷰티</h2><p class="category-detail">나를 표현하는 색과 감각</p><span class="category-state">준비 중</span></article>
+ <article class="category-card category-pending" aria-disabled="true"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M10 17h34v17a17 17 0 0 1-34 0ZM44 19h6a9 9 0 0 1 0 18h-6M6 55h46"/></svg><h2 class="category-name">라이프</h2><p class="category-detail">일상을 채우는 작은 취향</p><span class="category-state">준비 중</span></article>
+ </div><p class="category-note">현재 의류의 남성복 Simple 테스트를 이용할 수 있어요.<br>리빙·뷰티·라이프는 준비 중입니다.</p><button type="button" class="secondary" id="category-back">← TasteDNA 소개로</button>
+ </section>`;
+ document.querySelector('#category-apparel').onclick=selectApparel;
+ document.querySelector('#category-back').onclick=()=>{home();focusMain();};
+ focusMain();
 }
 function selectApparel(){
  history.replaceState(null,'','#taste');
  main.innerHTML='<section class="login"><p class="eyebrow">CHOOSE YOUR WARDROBE</p><h1>어떤 옷의 취향을<br>알아볼까요?</h1><p class="muted">살펴보고 싶은 의류를 선택해주세요.</p><button class="primary" id="choose-mens">남성</button><button class="secondary" id="choose-womens">여성 · 준비 중</button><small>남성복은 지금 테스트할 수 있어요. 여성복은 질문과 선택지를 준비하고 있어요.</small><button class="secondary" id="scope-back">← 소개로</button></section>';
  document.querySelector('#choose-mens').onclick=login;
  document.querySelector('#choose-womens').onclick=womenComingSoon;
- document.querySelector('#scope-back').onclick=()=>{home();focusMain();};
+ document.querySelector('#scope-back').textContent='← 카테고리로';
+ document.querySelector('#scope-back').onclick=selectCategory;
  focusMain();
 }
 function womenComingSoon(){

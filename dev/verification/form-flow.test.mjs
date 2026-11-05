@@ -32,10 +32,26 @@ test('atelier cover retains wardrobe selection and FORM login entry without star
  assert.match(node('main').innerHTML,/id="taste-guide"/);
  assert.match(node('main').innerHTML,/남성복 Simple 10문항/);
  node('#begin').onclick();
+ assert.match(node('main').innerHTML,/어떤 취향을 탐색해볼까요/);
+ node('#category-apparel').onclick();
  assert.match(node('main').innerHTML,/여성 · 준비 중/);
  node('#choose-mens').onclick();
  assert.match(node('main').innerHTML,/FORM 로그인/);
  assert.equal(run('returnTo'),'taste');assert.equal(calls.length,0);
+});
+test('pending categories cannot enter tests and both back buttons restore the preceding screen',()=>{
+ const {run,node,calls}=screen();
+ run('selectCategory();');
+ const html=node('main').innerHTML;
+ assert.equal((html.match(/class="category-card category-pending" aria-disabled="true"/g)||[]).length,3);
+ for(const name of ['리빙','뷰티','라이프'])assert.match(html,new RegExp('category-name">'+name));
+ assert.equal((html.match(/<button[^>]*category-card/g)||[]).length,1);
+ assert.equal((html.match(/class="category-state">준비 중/g)||[]).length,3);
+ node('#category-apparel').onclick();
+ assert.equal(node('#scope-back').textContent,'← 카테고리로');
+ node('#scope-back').onclick();assert.match(node('main').innerHTML,/id="category-title"/);
+ node('#category-back').onclick();assert.match(node('main').innerHTML,/id="atelier-title"/);
+ assert.equal(calls.length,0);
 });
 test('same-document session link requires login and preserves destination',()=>{
  const {run,node,calls}=screen();
