@@ -33,8 +33,9 @@ public class SimpleInitialCandidateService {
                                     List<Observation> unresolved, String status) {}
     public record Candidate(String candidateId, String candidateName, List<Source> sources,
                             CandidateEvidence evidence) {}
+    public record Decision(String status, List<Candidate> results, List<String> missingRequirements) {}
     public record Response(UUID sessionId, UUID definitionId, long revision, String status,
-                           boolean finalResult, List<Candidate> candidates) {}
+                           boolean finalResult, List<Candidate> candidates, Decision decision) {}
 
     @Transactional(readOnly = true)
     public Response find(String memberId, UUID sessionId) {
@@ -76,7 +77,14 @@ public class SimpleInitialCandidateService {
         if (result.size() > 5)
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "CANDIDATE_LIMIT_POLICY_REQUIRED");
         result.sort(Comparator.comparing(Candidate::candidateId));
-        return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", false, List.copyOf(result));
+        // Q02 직접 선택은 초기 후보 근거다. 승인된 구별·확정 규칙 없이 최종 RESULT로 승격하지 않는다.
+        List<String> missing = new ArrayList<>();
+        if (result.isEmpty()) missing.add("MAPPED_DIRECT_PREFERENCE_EVIDENCE");
+        missing.addAll(List.of("VERIFIED_CANDIDATE_EVIDENCE_MAPPING",
+                "NEGATIVE_AND_RANKED_EVIDENCE_INTERPRETATION",
+                "CANDIDATE_DISCRIMINATION_RULE", "FINALIZATION_RULE"));
+        return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", false,
+                List.copyOf(result), new Decision("DEFERRED", List.of(), List.copyOf(missing)));
     }
 
     // 관측 사실을 한 번씩 보존한다. 순위는 해당 비교 그룹 안에서만 유효하다.

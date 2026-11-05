@@ -335,7 +335,10 @@ class MemberAuthHttpTest {
         when(questions.findByIdDefinitionIdAndIdQuestionId(definitionId, "Q02")).thenReturn(Optional.of(questionRows.get(1)));
         mvc.perform(get("/api/v1/sessions/" + id + "/initial-candidates").session(browser.session()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INITIAL_CANDIDATES"))
-                .andExpect(jsonPath("$.finalResult").value(false)).andExpect(jsonPath("$.candidates").isEmpty());
+                .andExpect(jsonPath("$.finalResult").value(false)).andExpect(jsonPath("$.candidates").isEmpty())
+                .andExpect(jsonPath("$.decision.status").value("DEFERRED"))
+                .andExpect(jsonPath("$.decision.results").isEmpty())
+                .andExpect(jsonPath("$.decision.missingRequirements[0]").value("MAPPED_DIRECT_PREFERENCE_EVIDENCE"));
         verify(initialCandidates).extractCompatibleDirectEvidence(eq(memberId), eq(id), eq(definitionId), any(), any());
     }
 }
