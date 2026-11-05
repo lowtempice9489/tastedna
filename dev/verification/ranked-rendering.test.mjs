@@ -53,6 +53,33 @@ test('card types and rank badges follow removal, compaction and reselection',()=
  const multiple=vm.runInContext("optionMarkup({id:'A',label:'항목 A'},{questionId:'Q07',questionPayload:{kind:'MULTIPLE_CHOICE'}})",context);
  assert.match(multiple,/choice-multiple/);assert.match(multiple,/type="checkbox"/);assert.doesNotMatch(multiple,/rank-badge/);
 });
+test('report renders supplied evidence only and preserves revisit, restart and storefront actions',async()=>{
+ const context=renderer(),nodes=new Map();
+ context.document.querySelector=selector=>{
+  if(!nodes.has(selector))nodes.set(selector,{});
+  return nodes.get(selector);
+ };
+ const shopButton={};
+ context.document.createElement=()=>({querySelector:()=>shopButton});
+ context.data={title:'서버의 제목 <확인>',description:'서버 설명',session:{definitionId:'fixture',revision:3},evidence:[
+  {questionId:'Q02',prompt:'스타일',selections:[{label:'실제 선택 스타일',images:[]}]},
+  {questionId:'Q08',comparisonId:'C01',prompt:'비교 기록',selections:[{label:'실제 선택 A',images:[]}],alternatives:[{label:'대안 B'}]},
+  {questionId:'Q07',prompt:'회피',meaning:'EXPLICIT_AVOIDANCE',selections:[{label:'실제 회피 C',images:[]}]}
+ ]};
+ vm.runInContext("main.append=()=>{};session={sessionId:'saved'};var requests=[];api=async path=>{requests.push(path);return data};var destination='';selectApparel=()=>{destination='apparel'};shop=()=>{destination='shop'}",context);
+ await vm.runInContext('result()',context);
+ const html=vm.runInContext('main.innerHTML',context);
+ assert.match(html,/class="taste-report"/);assert.match(html,/서버의 제목 &lt;확인&gt;/);
+ for(const text of ['실제 선택 스타일','실제 선택 A','대안 B','실제 회피 C','선택하지 않은 쪽이 싫다는 뜻은 아니에요'])assert.ok(html.includes(text));
+ assert.doesNotMatch(html,/마음이 가는 색|첫눈에 끌린 착장|일치율|92%|추천 상품/);
+ nodes.get('#restart').onclick();assert.equal(vm.runInContext('destination',context),'apparel');
+ shopButton.onclick();assert.equal(vm.runInContext('destination',context),'shop');
+ context.data={...context.data,title:'재조회한 서버 제목',evidence:[]};
+ await vm.runInContext('result()',context);
+ const revisited=vm.runInContext('main.innerHTML',context);
+ assert.match(revisited,/재조회한 서버 제목/);assert.doesNotMatch(revisited,/실제 선택 스타일|피하고 싶은 착장이 없었어요/);
+ assert.equal(vm.runInContext('requests.join(",")',context),'/sessions/saved/preference-summary,/sessions/saved/preference-summary');
+});
 test('rank badges, review, result and download preserve saved ranking',async()=>{
  const context=renderer();
  const fixture=JSON.parse(readFileSync(new URL('../fixtures/simple/ranked_comparison_question_payload.json',import.meta.url),'utf8'));
