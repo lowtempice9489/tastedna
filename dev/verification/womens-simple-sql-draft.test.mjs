@@ -1,39 +1,46 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync,readdirSync} from 'node:fs';
-
+import {readFileSync,existsSync} from 'node:fs';
 const sql=readFileSync(new URL('../fixtures/simple/womens_simple_q05_q06_q10_definition_draft.sql',import.meta.url),'utf8');
-const blocks=[...sql.matchAll(/\/\* DRAFT (Q\d{2})\n([\s\S]*?)\*\//g)];
-
-test('SQL draft contains only three inert INSERT templates, no activation or DB commands',()=>{
- assert.deepEqual(blocks.map(b=>b[1]),['Q05','Q06','Q10']);
- assert.equal(sql.replace(/\/\*[\s\S]*?\*\//g,'').replace(/--[^\n]*/g,'').trim(),'');
- for(const [,q,body] of blocks){
-  assert.match(body,/^INSERT INTO td_question_definition/);
-  assert.match(body,/\{\{APPROVED_WOMENS_DEFINITION_ID\}\}/);
-  assert.ok(body.includes(`{{APPROVED_${q}_REQUIRED}}`));
-  assert.ok(body.includes(`{{APPROVED_${q}_DEPENDENCY_PAYLOAD}}`));
-  assert.doesNotMatch(body,/\b(UPDATE|DELETE|USE|CREATE|COMMIT|active|td_option_scoring_rule)\b/i);
- }
+const v13=readFileSync(new URL('../../src/main/resources/db/migration/V13__add_mens_image_simple_definition.sql',import.meta.url),'utf8');
+const rows=v13.split('\n').filter(l=>l.startsWith('INSERT INTO td_question_definition'));
+const payloads=new Map([...sql.matchAll(/SET @womens_(q\d{2})_payload = '([^\n]+)';/g)].map(m=>[m[1].toUpperCase(),JSON.parse(m[2].replaceAll("''","'"))]));
+test('ten question templates stay inert and executable preparation only uses SET',()=>{
+ assert.equal(payloads.size,10);
+ assert.deepEqual([...sql.matchAll(/\/\* DRAFT (Q\d{2})/g)].map(m=>m[1]),[...payloads.keys()]);
+ const executable=sql.replace(/\/\*[\s\S]*?\*\//g,'').replace(/--[^\n]*/g,'');
+ assert.equal(executable.replace(/SET @\w+ = '[^\n]*';/g,'').trim(),'');
+ assert.match(sql,/SET @womens_version_code = 'SIMPLE-WOMENS-IMAGE-V1'/);
+ const id=sql.match(/SET @womens_definition_id = '([^']+)'/)[1];
+ assert.match(id,/^[0-9a-f-]{36}$/);assert.ok(!v13.includes(id));
+ assert.match(sql,/APPROVED_PUBLISHED_AT\}\},FALSE/);
+ for(const q of payloads.keys())assert.ok(sql.includes(`{{APPROVED_${q}_REQUIRED}}`));
 });
-
-for(const [q,max,count] of [['Q05',3,10],['Q06',3,8],['Q10',6,19]]){
- test(`${q}: SQL JSON matches fixture, option codes and real images`,()=>{
-  const body=blocks.find(b=>b[1]===q)?.[2];assert.ok(body);
-  const match=body.match(/'(?<id>Q\d{2})',\s*(?<order>\d+),\s*'(?<json>\{[^\n]+\})',/);
-  assert.ok(match);assert.equal(match.groups.id,q);assert.equal(Number(match.groups.order),Number(q.slice(1)));
-  const payload=JSON.parse(match.groups.json.replaceAll("''","'"));
-  const fixture=JSON.parse(readFileSync(new URL(`../fixtures/simple/womens_simple_${q.toLowerCase()}_draft.json`,import.meta.url),'utf8'));
-  assert.deepEqual(payload,fixture.questionPayload);
-  assert.equal(payload.kind,'MULTIPLE_CHOICE');assert.equal(payload.maxSelections,max);
-  assert.deepEqual(Object.keys(payload).sort(),['kind','maxSelections','options']);
-  assert.deepEqual(payload.options.map(o=>o.id),Array.from({length:count},(_,i)=>String.fromCharCode(65+i)));
-  const directory=new URL(`../../gender/female/${q}/`,import.meta.url);
-  const names=readdirSync(directory);
-  for(const option of payload.options){
-   assert.deepEqual(Object.keys(option).sort(),['id','images']);
-   assert.deepEqual(option.images,[`/assets/gender/female/${q}/${option.id}.png`]);
-   assert.ok(names.includes(`${option.id}.png`));
+for(let i=1;i<=10;i++){
+ const q='Q'+String(i).padStart(2,'0');
+ test(`${q}: prepared payload exactly matches approved source`,()=>{
+  const actual=payloads.get(q);let expected;
+  if(i<=4){const l=rows[i-1];expected=JSON.parse(l.slice(l.indexOf(",'{")+2,l.lastIndexOf("','{}',TRUE)")).replaceAll("''","'").replaceAll('\\\\','\\'));}
+  else expected=JSON.parse(readFileSync(new URL(`../fixtures/simple/womens_simple_${q.toLowerCase()}_draft.json`,import.meta.url),'utf8')).questionPayload;
+  assert.deepEqual(actual,expected);
+  const groups=actual.comparisons||[actual];
+  if(actual.comparisons)assert.equal(new Set(groups.map(g=>g.id)).size,groups.length);
+  for(const g of groups){
+   assert.equal(new Set(g.options.map(o=>o.id)).size,g.options.length);
+   for(const url of [...(g.overviewImages||[]),...g.options.flatMap(o=>o.images||[])]){
+    assert.ok(url.startsWith('/assets/gender/female/'));
+    assert.ok(existsSync(new URL('../../'+url.slice('/assets/'.length),import.meta.url)),url);
+   }
+   if(g.selectionMode==='RANKED_MULTI_SELECT')assert.ok(!('minSelections' in g));
   }
  });
 }
+test('shared direct observation data matches V13 without new scoring',()=>{
+ const actual=JSON.parse(sql.match(/SET @womens_shared_direct_rules = '([^\n]+)';/)[1].replaceAll("''","'"));
+ const expected=v13.split('\n').filter(l=>l.startsWith('INSERT INTO td_option_scoring_rule')&&/,'Q0[1-4]',/.test(l)).map(l=>{
+  const m=l.match(/VALUES \('[^']+','(Q0[1-4])','([^']+)','([^']*)','([^']*)'\);/);
+  return {questionId:m[1],optionId:m[2],scoringPayload:JSON.parse(m[3]),observationPayload:JSON.parse(m[4])};
+ });
+ assert.deepEqual(actual,expected);assert.ok(actual.length>0);
+ for(const rule of actual){assert.deepEqual(rule.scoringPayload,{});assert.ok(payloads.get(rule.questionId).options.some(o=>o.id===rule.optionId));}
+});

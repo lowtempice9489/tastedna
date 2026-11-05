@@ -1,51 +1,94 @@
--- 여성복 Simple Q05·Q06·Q10 INSERT 준비 초안 (09-D-2)
--- 실행 SQL이 아니다. 모든 INSERT는 의도적으로 일반 주석 안에 둔다.
--- Flyway 배포·DB 적용·정의 활성화 금지. 기존 정의를 UPDATE/UPSERT하지 않는다.
--- 근거: womens_simple_q05/q06/q10_draft.json 및 docs/womens-simple-db-contract-review.md
--- question_payload에는 확정된 kind/maxSelections/options(id/images)만 포함한다.
--- 적용 전 prompt/description/각 option.label, 최소 선택·필수 여부, NONE 및 배타 처리 승인 필요.
--- 관측 의미·점수·RESULT 규칙을 생성하지 않는다. 관측 테이블 INSERT도 포함하지 않는다.
--- 신규 여성복 부모 정의의 ID·버전 메타데이터 및 나머지 7문항 계약은 별도 준비가 필요하다.
--- {{...}}는 승인 후 교체할 템플릿 표식이며 SQL 값이나 실행 가능한 기본값이 아니다.
--- REQUIRED를 TRUE/FALSE로 임의 확정하지 않으며 dependency_payload도 적용 시 확인한다.
--- 주석 해제만으로 배포하지 말 것: JSON 표시문구 등 누락 계약을 먼저 완성해야 한다.
+-- 여성복 Simple 통합 SQL 초안 (09-D-5). 기존 09-D-2 파일을 확장하며 파일명은 참조 보존을 위해 유지.
+-- 근거: 남성복 V13, womens_simple_q05~q10_draft.json, 선택 방식 정책 v1.0 및 후속 사용자 승인.
+-- SET 문은 확정 데이터의 실행 가능한 준비 구문이다. 테이블 INSERT는 아직 실행 불가한 주석 템플릿이다.
+-- 10문항 계약 완성 전 이 파일을 DB에 적용하거나 Flyway로 배포하지 않는다.
+-- Q01~Q04 문구/설명/선택지/방식/최대/직접 관측은 V13과 동일. 최소·필수 여부를 자동 승인하지 않는다.
+-- Q07은 회피 대상 복수선택이지만 관측 유형 코드·표시명·NONE 규칙은 아직 생성하지 않는다.
+-- 일반 복수선택의 미선택은 비선호가 아니다. 순위형의 미선택 해석은 해당 그룹에만 한정한다.
+-- 남성복 Q09 변경 지시는 이번 범위 밖이므로 적용하지 않는다.
+-- Q08/Q09 overviewImages는 desktop/mobile 참고 합본 목록이며 동시 노출 지시가 아니다.
+-- 미확정: Q05~Q10 문구/표시명/관측 코드, 최소·필수·NONE, Q08/Q09 조건 및 순위형 최대값.
+-- 기존 공통 구현은 순위형 전체 옵션 선택을 지원하지만 정책 v1.0의 제품 최대값 승인을 대신하지 않는다.
+-- {{...}}는 승인 후 치환할 표식이다. NULL/빈 문자열/임시 값으로 채우지 않는다.
+
+SET @womens_definition_id = '6acc799d-1348-4f34-b756-593e9f5bfd52';
+SET @womens_version_code = 'SIMPLE-WOMENS-IMAGE-V1';
+
+-- Q01: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q01_payload = '{"kind":"MULTIPLE_CHOICE","prompt":"옷을 고를 때 자연스럽게 손이 가는 색을 골라주세요.","description":"평소 자주 입는 색이 아니라, 실제로 마음이 가는 색을 기준으로 선택해주세요.","maxSelections":5,"options":[{"id":"A","label":"블랙"},{"id":"B","label":"화이트·아이보리"},{"id":"C","label":"그레이·실버"},{"id":"D","label":"베이지·크림"},{"id":"E","label":"브라운·카멜"},{"id":"F","label":"네이비"},{"id":"G","label":"블루"},{"id":"H","label":"그린·올리브"},{"id":"I","label":"레드·버건디"},{"id":"J","label":"핑크"},{"id":"K","label":"퍼플"},{"id":"L","label":"옐로·머스터드"},{"id":"M","label":"오렌지·코랄"},{"id":"N","label":"파스텔 계열"},{"id":"O","label":"선명하고 밝은 색 계열"}]}';
+-- Q02: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q02_payload = '{"kind":"MULTIPLE_CHOICE","prompt":"내 스타일에 가깝거나, 입어보고 싶은 패션룩을 골라주세요.","description":"지금 자주 입는 스타일뿐 아니라 실제로 끌리는 스타일도 함께 선택해주세요.","maxSelections":4,"options":[{"id":"R01","label":"미니멀"},{"id":"R02","label":"모던"},{"id":"R03","label":"클래식"},{"id":"R04","label":"프레피"},{"id":"R05","label":"캐주얼"},{"id":"R06","label":"스포티"},{"id":"R07","label":"스트릿"},{"id":"R08","label":"빈티지·레트로"},{"id":"R09","label":"로맨틱"},{"id":"R10","label":"보헤미안"},{"id":"R11","label":"에지·그런지"},{"id":"R12","label":"글램·화려함"}]}';
+-- Q03: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q03_payload = '{"kind":"MULTIPLE_CHOICE","prompt":"옷을 입었을 때 어떤 핏이나 실루엣이 가장 마음에 드나요?","description":"평소 좋아하거나 실제로 입고 싶은 형태를 선택해주세요.","maxSelections":3,"options":[{"id":"S01","label":"슬림핏"},{"id":"S02","label":"레귤러핏"},{"id":"S03","label":"릴랙스드핏"},{"id":"S04","label":"오버사이즈핏"},{"id":"S05","label":"짧고 컴팩트한 실루엣"},{"id":"S06","label":"길고 여유로운 실루엣"}]}';
+-- Q04: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q04_payload = '{"kind":"MULTIPLE_CHOICE","prompt":"옷에 들어간 패턴이나 그래픽 중 마음에 드는 것을 골라주세요.","description":"평소 좋아하거나 실제로 입고 싶은 것을 선택해주세요.","maxSelections":4,"options":[{"id":"P01","label":"무지·솔리드"},{"id":"P02","label":"스트라이프"},{"id":"P03","label":"체크·격자"},{"id":"P04","label":"작은 로고·그래픽"},{"id":"P05","label":"큰 그래픽·레터링"},{"id":"P06","label":"플라워·식물 패턴"},{"id":"P07","label":"도트·반복 패턴"},{"id":"P08","label":"추상·아트 패턴"},{"id":"P09","label":"애니멀 패턴"}]}';
+-- Q05: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q05_payload = '{"kind":"MULTIPLE_CHOICE","maxSelections":3,"options":[{"id":"A","images":["/assets/gender/female/Q05/A.png"]},{"id":"B","images":["/assets/gender/female/Q05/B.png"]},{"id":"C","images":["/assets/gender/female/Q05/C.png"]},{"id":"D","images":["/assets/gender/female/Q05/D.png"]},{"id":"E","images":["/assets/gender/female/Q05/E.png"]},{"id":"F","images":["/assets/gender/female/Q05/F.png"]},{"id":"G","images":["/assets/gender/female/Q05/G.png"]},{"id":"H","images":["/assets/gender/female/Q05/H.png"]},{"id":"I","images":["/assets/gender/female/Q05/I.png"]},{"id":"J","images":["/assets/gender/female/Q05/J.png"]}]}';
+-- Q06: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q06_payload = '{"kind":"MULTIPLE_CHOICE","maxSelections":3,"options":[{"id":"A","images":["/assets/gender/female/Q06/A.png"]},{"id":"B","images":["/assets/gender/female/Q06/B.png"]},{"id":"C","images":["/assets/gender/female/Q06/C.png"]},{"id":"D","images":["/assets/gender/female/Q06/D.png"]},{"id":"E","images":["/assets/gender/female/Q06/E.png"]},{"id":"F","images":["/assets/gender/female/Q06/F.png"]},{"id":"G","images":["/assets/gender/female/Q06/G.png"]},{"id":"H","images":["/assets/gender/female/Q06/H.png"]}]}';
+-- Q07: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q07_payload = '{"kind":"MULTIPLE_CHOICE","maxSelections":3,"options":[{"id":"A","images":["/assets/gender/female/Q07/A.png"]},{"id":"B","images":["/assets/gender/female/Q07/B.png"]},{"id":"C","images":["/assets/gender/female/Q07/C.png"]},{"id":"D","images":["/assets/gender/female/Q07/D.png"]},{"id":"E","images":["/assets/gender/female/Q07/E.png"]},{"id":"F","images":["/assets/gender/female/Q07/F.png"]},{"id":"G","images":["/assets/gender/female/Q07/G.png"]},{"id":"H","images":["/assets/gender/female/Q07/H.png"]},{"id":"I","images":["/assets/gender/female/Q07/I.png"]},{"id":"J","images":["/assets/gender/female/Q07/J.png"]},{"id":"K","images":["/assets/gender/female/Q07/K.png"]}]}';
+-- Q08: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q08_payload = '{"kind":"COMPARISON","comparisons":[{"id":"C01","selectionMode":"SINGLE","overviewImages":["/assets/gender/female/Q08/C01/Q08_C01_AB_desktop.png","/assets/gender/female/Q08/C01/Q08_C01_AB_mobile.png"],"options":[{"id":"A","images":["/assets/gender/female/Q08/C01/A1.png","/assets/gender/female/Q08/C01/A2.png","/assets/gender/female/Q08/C01/A3.png"]},{"id":"B","images":["/assets/gender/female/Q08/C01/B1.png","/assets/gender/female/Q08/C01/B2.png","/assets/gender/female/Q08/C01/B3.png"]}]},{"id":"C02","selectionMode":"SINGLE","overviewImages":["/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_desktop_review.png","/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_mobile_review.png"],"options":[{"id":"A","images":["/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_A.png"]},{"id":"B","images":["/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_B.png"]},{"id":"C","images":["/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_C.png"]},{"id":"D","images":["/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_D.png"]}]},{"id":"C03","selectionMode":"SINGLE","overviewImages":["/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_desktop_review.png","/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_mobile_review.png"],"options":[{"id":"A","images":["/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_A.png"]},{"id":"B","images":["/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_B.png"]}]},{"id":"C04","selectionMode":"RANKED_MULTI_SELECT","overviewImages":["/assets/gender/female/Q08/C04/TasteDNA_WQ08_C04_knee_desktop.png","/assets/gender/female/Q08/C04/TasteDNA_WQ08_C04_knee_mobile.png"],"options":[{"id":"A","images":["/assets/gender/female/Q08/C04/A_미니.png"]},{"id":"B","images":["/assets/gender/female/Q08/C04/TasteDNA_WQ08_C04_B_knee_individual.png"]},{"id":"C","images":["/assets/gender/female/Q08/C04/C_롱.png"]}]},{"id":"C05","selectionMode":"RANKED_MULTI_SELECT","overviewImages":["/assets/gender/female/Q08/C05/Q08_C05_desktop.png","/assets/gender/female/Q08/C05/Q08_C05_mobile.png"],"options":[{"id":"A","images":["/assets/gender/female/Q08/C05/Q08_C05_A.png"]},{"id":"B","images":["/assets/gender/female/Q08/C05/Q08_C05_B.png"]},{"id":"C","images":["/assets/gender/female/Q08/C05/Q08_C05_C.png"]},{"id":"D","images":["/assets/gender/female/Q08/C05/Q08_C05_D.png"]}]}]}';
+-- Q09: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q09_payload = '{"kind":"COMPARISON","comparisons":[{"id":"C01","selectionMode":"SINGLE","overviewImages":["/assets/gender/female/Q09/C01/ChatGPT_Q09_C01_desktop.png","/assets/gender/female/Q09/C01/ChatGPT_Q09_C01_mobile.png"],"options":[{"id":"A","images":["/assets/gender/female/Q09/C01/A1.png","/assets/gender/female/Q09/C01/A2.png","/assets/gender/female/Q09/C01/A3.png","/assets/gender/female/Q09/C01/A4.png"]},{"id":"B","images":["/assets/gender/female/Q09/C01/B1.png","/assets/gender/female/Q09/C01/B2.png","/assets/gender/female/Q09/C01/B3.png","/assets/gender/female/Q09/C01/B4.png"]}]},{"id":"C02","selectionMode":"RANKED_MULTI_SELECT","overviewImages":["/assets/gender/female/Q09/C02/TasteDNA_WQ09_C02_desktop_5options.png","/assets/gender/female/Q09/C02/TasteDNA_WQ09_C02_mobile_5options.png"],"options":[{"id":"A","images":["/assets/gender/female/Q09/C02/A.png"]},{"id":"B","images":["/assets/gender/female/Q09/C02/B.png"]},{"id":"C","images":["/assets/gender/female/Q09/C02/C.png"]},{"id":"D","images":["/assets/gender/female/Q09/C02/D.png"]},{"id":"E","images":["/assets/gender/female/Q09/C02/E.png"]}]},{"id":"C03","selectionMode":"SINGLE","overviewImages":["/assets/gender/female/Q09/C03/TasteDNA_WQ09_C03_desktop.png","/assets/gender/female/Q09/C03/TasteDNA_WQ09_C03_mobile.png"],"options":[{"id":"A","images":["/assets/gender/female/Q09/C03/A1.png","/assets/gender/female/Q09/C03/A2.png","/assets/gender/female/Q09/C03/A3.png","/assets/gender/female/Q09/C03/A4.png"]},{"id":"B","images":["/assets/gender/female/Q09/C03/B1.png","/assets/gender/female/Q09/C03/B2.png","/assets/gender/female/Q09/C03/B3.png","/assets/gender/female/Q09/C03/B4.png"]}]},{"id":"C04","selectionMode":"SINGLE","overviewImages":["/assets/gender/female/Q09/C04/TasteDNA_WQ09_C04_desktop.png","/assets/gender/female/Q09/C04/TasteDNA_WQ09_C04_mobile.png"],"options":[{"id":"A","images":["/assets/gender/female/Q09/C04/A1.png","/assets/gender/female/Q09/C04/A2.png","/assets/gender/female/Q09/C04/A3.png","/assets/gender/female/Q09/C04/A4.png"]},{"id":"B","images":["/assets/gender/female/Q09/C04/B1.png","/assets/gender/female/Q09/C04/B2.png","/assets/gender/female/Q09/C04/B3.png","/assets/gender/female/Q09/C04/B4.png"]}]}]}';
+-- Q10: 확정 필드만 보존. 누락 필드는 후속 승인 후 JSON에 추가한다.
+SET @womens_q10_payload = '{"kind":"MULTIPLE_CHOICE","maxSelections":6,"options":[{"id":"A","images":["/assets/gender/female/Q10/A.png"]},{"id":"B","images":["/assets/gender/female/Q10/B.png"]},{"id":"C","images":["/assets/gender/female/Q10/C.png"]},{"id":"D","images":["/assets/gender/female/Q10/D.png"]},{"id":"E","images":["/assets/gender/female/Q10/E.png"]},{"id":"F","images":["/assets/gender/female/Q10/F.png"]},{"id":"G","images":["/assets/gender/female/Q10/G.png"]},{"id":"H","images":["/assets/gender/female/Q10/H.png"]},{"id":"I","images":["/assets/gender/female/Q10/I.png"]},{"id":"J","images":["/assets/gender/female/Q10/J.png"]},{"id":"K","images":["/assets/gender/female/Q10/K.png"]},{"id":"L","images":["/assets/gender/female/Q10/L.png"]},{"id":"M","images":["/assets/gender/female/Q10/M.png"]},{"id":"N","images":["/assets/gender/female/Q10/N.png"]},{"id":"O","images":["/assets/gender/female/Q10/O.png"]},{"id":"P","images":["/assets/gender/female/Q10/P.png"]},{"id":"Q","images":["/assets/gender/female/Q10/Q.png"]},{"id":"R","images":["/assets/gender/female/Q10/R.png"]},{"id":"S","images":["/assets/gender/female/Q10/S.png"]}]}';
+
+-- Q01~Q04 직접 관측은 아래 JSON에만 보관한다. 승인된 정의 구성 완료 후 관측 테이블 INSERT에 사용한다.
+SET @womens_shared_direct_rules = '[{"questionId":"Q01","optionId":"A","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"블랙","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"B","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"화이트·아이보리","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"C","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"그레이·실버","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"D","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"베이지·크림","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"E","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"브라운·카멜","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"F","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"네이비","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"G","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"블루","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"H","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"그린·올리브","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"I","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"레드·버건디","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"J","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"핑크","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"K","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"퍼플","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"L","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"옐로·머스터드","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"M","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"오렌지·코랄","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"N","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"파스텔 계열","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q01","optionId":"O","scoringPayload":{},"observationPayload":{"type":"DIRECT_COLOR_PREFERENCE","observedValue":"선명하고 밝은 색 계열","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R01","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"미니멀","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R02","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"모던","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R03","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"클래식","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R04","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"프레피","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R05","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"캐주얼","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R06","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"스포티","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R07","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"스트릿","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R08","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"빈티지·레트로","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R09","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"로맨틱","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R10","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"보헤미안","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R11","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"에지·그런지","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q02","optionId":"R12","scoringPayload":{},"observationPayload":{"type":"DIRECT_FASHION_LOOK_PREFERENCE","observedValue":"글램·화려함","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q03","optionId":"S01","scoringPayload":{},"observationPayload":{"type":"DIRECT_SILHOUETTE_PREFERENCE","observedValue":"슬림핏","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q03","optionId":"S02","scoringPayload":{},"observationPayload":{"type":"DIRECT_SILHOUETTE_PREFERENCE","observedValue":"레귤러핏","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q03","optionId":"S03","scoringPayload":{},"observationPayload":{"type":"DIRECT_SILHOUETTE_PREFERENCE","observedValue":"릴랙스드핏","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q03","optionId":"S04","scoringPayload":{},"observationPayload":{"type":"DIRECT_SILHOUETTE_PREFERENCE","observedValue":"오버사이즈핏","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q03","optionId":"S05","scoringPayload":{},"observationPayload":{"type":"DIRECT_SILHOUETTE_PREFERENCE","observedValue":"짧고 컴팩트한 실루엣","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q03","optionId":"S06","scoringPayload":{},"observationPayload":{"type":"DIRECT_SILHOUETTE_PREFERENCE","observedValue":"길고 여유로운 실루엣","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P01","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"무지·솔리드","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P02","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"스트라이프","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P03","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"체크·격자","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P04","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"작은 로고·그래픽","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P05","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"큰 그래픽·레터링","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P06","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"플라워·식물 패턴","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P07","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"도트·반복 패턴","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P08","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"추상·아트 패턴","evidence":"EXPLICIT_SELECTION"}},{"questionId":"Q04","optionId":"P09","scoringPayload":{},"observationPayload":{"type":"DIRECT_PATTERN_GRAPHIC_PREFERENCE","observedValue":"애니멀 패턴","evidence":"EXPLICIT_SELECTION"}}]';
+
+/* DRAFT PARENT
+INSERT INTO td_test_definition (definition_id,test_mode,version_code,question_count,scoring_version,raw_schema_version,published_at,active)
+VALUES (@womens_definition_id,'SIMPLE',@womens_version_code,10,{{APPROVED_SCORING_VERSION}},{{APPROVED_RAW_SCHEMA_VERSION}},{{APPROVED_PUBLISHED_AT}},FALSE);
+*/
+
+/* DRAFT Q01
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q01',1,@womens_q01_payload,{{APPROVED_Q01_DEPENDENCY_PAYLOAD}},{{APPROVED_Q01_REQUIRED}});
+*/
+
+/* DRAFT Q02
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q02',2,@womens_q02_payload,{{APPROVED_Q02_DEPENDENCY_PAYLOAD}},{{APPROVED_Q02_REQUIRED}});
+*/
+
+/* DRAFT Q03
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q03',3,@womens_q03_payload,{{APPROVED_Q03_DEPENDENCY_PAYLOAD}},{{APPROVED_Q03_REQUIRED}});
+*/
+
+/* DRAFT Q04
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q04',4,@womens_q04_payload,{{APPROVED_Q04_DEPENDENCY_PAYLOAD}},{{APPROVED_Q04_REQUIRED}});
+*/
 
 /* DRAFT Q05
-INSERT INTO td_question_definition (
-    definition_id, question_id, display_order, question_payload, dependency_payload, required
-) VALUES (
-    {{APPROVED_WOMENS_DEFINITION_ID}},
-    'Q05',
-    5,
-    '{"kind":"MULTIPLE_CHOICE","maxSelections":3,"options":[{"id":"A","images":["/assets/gender/female/Q05/A.png"]},{"id":"B","images":["/assets/gender/female/Q05/B.png"]},{"id":"C","images":["/assets/gender/female/Q05/C.png"]},{"id":"D","images":["/assets/gender/female/Q05/D.png"]},{"id":"E","images":["/assets/gender/female/Q05/E.png"]},{"id":"F","images":["/assets/gender/female/Q05/F.png"]},{"id":"G","images":["/assets/gender/female/Q05/G.png"]},{"id":"H","images":["/assets/gender/female/Q05/H.png"]},{"id":"I","images":["/assets/gender/female/Q05/I.png"]},{"id":"J","images":["/assets/gender/female/Q05/J.png"]}]}',
-    {{APPROVED_Q05_DEPENDENCY_PAYLOAD}},
-    {{APPROVED_Q05_REQUIRED}}
-);
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q05',5,@womens_q05_payload,{{APPROVED_Q05_DEPENDENCY_PAYLOAD}},{{APPROVED_Q05_REQUIRED}});
 */
 
 /* DRAFT Q06
-INSERT INTO td_question_definition (
-    definition_id, question_id, display_order, question_payload, dependency_payload, required
-) VALUES (
-    {{APPROVED_WOMENS_DEFINITION_ID}},
-    'Q06',
-    6,
-    '{"kind":"MULTIPLE_CHOICE","maxSelections":3,"options":[{"id":"A","images":["/assets/gender/female/Q06/A.png"]},{"id":"B","images":["/assets/gender/female/Q06/B.png"]},{"id":"C","images":["/assets/gender/female/Q06/C.png"]},{"id":"D","images":["/assets/gender/female/Q06/D.png"]},{"id":"E","images":["/assets/gender/female/Q06/E.png"]},{"id":"F","images":["/assets/gender/female/Q06/F.png"]},{"id":"G","images":["/assets/gender/female/Q06/G.png"]},{"id":"H","images":["/assets/gender/female/Q06/H.png"]}]}',
-    {{APPROVED_Q06_DEPENDENCY_PAYLOAD}},
-    {{APPROVED_Q06_REQUIRED}}
-);
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q06',6,@womens_q06_payload,{{APPROVED_Q06_DEPENDENCY_PAYLOAD}},{{APPROVED_Q06_REQUIRED}});
+*/
+
+/* DRAFT Q07
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q07',7,@womens_q07_payload,{{APPROVED_Q07_DEPENDENCY_PAYLOAD}},{{APPROVED_Q07_REQUIRED}});
+*/
+
+/* DRAFT Q08
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q08',8,@womens_q08_payload,{{APPROVED_Q08_DEPENDENCY_PAYLOAD}},{{APPROVED_Q08_REQUIRED}});
+*/
+
+/* DRAFT Q09
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q09',9,@womens_q09_payload,{{APPROVED_Q09_DEPENDENCY_PAYLOAD}},{{APPROVED_Q09_REQUIRED}});
 */
 
 /* DRAFT Q10
-INSERT INTO td_question_definition (
-    definition_id, question_id, display_order, question_payload, dependency_payload, required
-) VALUES (
-    {{APPROVED_WOMENS_DEFINITION_ID}},
-    'Q10',
-    10,
-    '{"kind":"MULTIPLE_CHOICE","maxSelections":6,"options":[{"id":"A","images":["/assets/gender/female/Q10/A.png"]},{"id":"B","images":["/assets/gender/female/Q10/B.png"]},{"id":"C","images":["/assets/gender/female/Q10/C.png"]},{"id":"D","images":["/assets/gender/female/Q10/D.png"]},{"id":"E","images":["/assets/gender/female/Q10/E.png"]},{"id":"F","images":["/assets/gender/female/Q10/F.png"]},{"id":"G","images":["/assets/gender/female/Q10/G.png"]},{"id":"H","images":["/assets/gender/female/Q10/H.png"]},{"id":"I","images":["/assets/gender/female/Q10/I.png"]},{"id":"J","images":["/assets/gender/female/Q10/J.png"]},{"id":"K","images":["/assets/gender/female/Q10/K.png"]},{"id":"L","images":["/assets/gender/female/Q10/L.png"]},{"id":"M","images":["/assets/gender/female/Q10/M.png"]},{"id":"N","images":["/assets/gender/female/Q10/N.png"]},{"id":"O","images":["/assets/gender/female/Q10/O.png"]},{"id":"P","images":["/assets/gender/female/Q10/P.png"]},{"id":"Q","images":["/assets/gender/female/Q10/Q.png"]},{"id":"R","images":["/assets/gender/female/Q10/R.png"]},{"id":"S","images":["/assets/gender/female/Q10/S.png"]}]}',
-    {{APPROVED_Q10_DEPENDENCY_PAYLOAD}},
-    {{APPROVED_Q10_REQUIRED}}
-);
+INSERT INTO td_question_definition (definition_id,question_id,display_order,question_payload,dependency_payload,required)
+VALUES (@womens_definition_id,'Q10',10,@womens_q10_payload,{{APPROVED_Q10_DEPENDENCY_PAYLOAD}},{{APPROVED_Q10_REQUIRED}});
 */
-
