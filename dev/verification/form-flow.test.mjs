@@ -128,3 +128,38 @@ test('logout clears in-memory member and assessment; login without member cannot
  assert.equal(run('session'),null);assert.equal(run('Object.keys(answers).length'),0);
  assert.equal(run('returnTo'),null);
 });
+
+test('mypage requires FORM login and returns without creating a test',async()=>{
+ const {run,node,calls,client}=screen();
+ run('openMyPage()');assert.match(node('main').innerHTML,/FORM 로그인/);assert.equal(run('returnTo'),'mypage');assert.equal(calls.length,0);
+ client.request=async(path,body)=>{calls.push([path,body]);return path==='/auth/login'?{memberId:'form-a',email:'a@example.test'}:null;};
+ node('#form-email').value='a@example.test';node('#form-password').value='test';
+ node('form').onsubmit({preventDefault(){}});await settle();
+ assert.match(node('main').innerHTML,/현재 조회 가능한 Simple 기록이 없습니다/);
+ assert.deepEqual(calls.map(c=>c[0]),['/auth/login','/sessions/active']);
+});
+test('mypage only shows server-verified records and routes resume and submitted results',async()=>{
+ const {run,node,calls,client}=screen();
+ client.request=async(path,body)=>{calls.push([path,body]);return path==='/sessions/active'?{sessionId:'active',mode:'SIMPLE',apparelScope:'mens',status:'IN_PROGRESS'}:{sessionId:'saved',mode:'SIMPLE',apparelScope:'mens',status:'SUBMITTED'};};
+ run("member={email:'a@example.test'};session={sessionId:'saved'};loadSession=async id=>{globalThis.loaded=id;};");
+ await run('openMyPage()');
+ assert.match(node('main').innerHTML,/진행 중/);assert.match(node('main').innerHTML,/제출 완료/);
+ assert.match(node('main').innerHTML,/리빙 · 준비 중/);assert.doesNotMatch(node('main').innerHTML,/포인트|주문|일치율/);
+ node('#mypage-record-0').onclick();await settle();assert.equal(run('loaded'),'active');
+ assert.ok(calls.some(c=>c[0]==='/sessions/active/resume'&&c[1]));
+ node('#mypage-record-1').onclick();await settle();assert.equal(run('loaded'),'saved');
+ assert.ok(!calls.some(c=>c[0]==='/sessions/saved/resume'));
+ run('updateMemberNav()');node('#form-logout').onclick();await settle();
+ assert.equal(run('member'),null);assert.equal(run('session'),null);
+});
+test('mypage hides inaccessible recent record and clears screen on expired login',async()=>{
+ for(const status of [404,401]){
+  const {run,node,client}=screen();
+  client.request=async path=>{if(path==='/sessions/active')return null;throw Object.assign(new Error('SESSION_NOT_FOUND'),{status});};
+  run("member={email:'a@example.test'};session={sessionId:'private-record'}");
+  await run('openMyPage()');
+  assert.doesNotMatch(node('main').innerHTML,/기록 private-record/);
+  if(status===401){assert.equal(run('member'),null);assert.match(node('main').innerHTML,/FORM 로그인/);}
+  else assert.match(node('main').innerHTML,/현재 조회 가능한 Simple 기록이 없습니다/);
+ }
+});

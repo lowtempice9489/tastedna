@@ -145,15 +145,47 @@ function clearMember(){
 function updateMemberNav(){
  const nav=document.querySelector('#member-nav');
  if(authMode!=='member'){nav.textContent=authMode==='local'?'LOCAL · 개발용 체험':'';return;}
- nav.innerHTML=member?'<span>'+esc(member.email)+'</span><button id="form-logout">로그아웃</button>':'<button id="form-login">FORM 로그인</button><button id="form-signup">회원가입</button>';
+ nav.innerHTML=member?'<span>'+esc(member.email)+'</span><button id="form-mypage">마이페이지</button><button id="form-logout">로그아웃</button>':'<button id="form-mypage">마이페이지</button><button id="form-login">FORM 로그인</button><button id="form-signup">회원가입</button>';
+ nav.querySelector('#form-mypage')?.addEventListener('click',()=>{if(!busy)openMyPage();});
  nav.querySelector('#form-login')?.addEventListener('click',()=>{if(!busy){returnTo=new URLSearchParams(location.hash.slice(1)).get('session')||null;formAuth();}});
  nav.querySelector('#form-signup')?.addEventListener('click',()=>{if(!busy){returnTo=new URLSearchParams(location.hash.slice(1)).get('session')||null;formAuth(true);}});
  nav.querySelector('#form-logout')?.addEventListener('click',()=>action(async()=>{
   await api('/auth/logout',{});returnTo=null;clearMember();shop();toast('로그아웃했습니다.');
  }));
 }
+function openMyPage(){
+ if(authMode!=='member')return;
+ returnTo='mypage';
+ if(!member){formAuth();return;}
+ return action(myPage);
+}
+async function myPage(){
+ if(!member){returnTo='mypage';formAuth();return;}
+ const lastId=session?.sessionId;
+ history.replaceState(null,'','#mypage');returnTo='mypage';
+ loading('나의 TasteDNA 기록을 확인하고 있어요.');
+ const records=[];
+ const active=await api('/sessions/active');
+ if(active?.mode==='SIMPLE'&&active.status==='IN_PROGRESS')records.push(active);
+ if(lastId&&!records.some(r=>r.sessionId===lastId)){
+  try{
+   const recent=await api('/sessions/'+encodeURIComponent(lastId));
+   if(recent.mode==='SIMPLE'&&['IN_PROGRESS','SUBMITTED'].includes(recent.status))records.push(recent);
+  }catch(e){if(![403,404].includes(e.status))throw e;}
+ }
+ main.innerHTML='<section class="form-mypage"><header class="mypage-heading"><p class="eyebrow">FORM / MY PAGE</p><h1>마이페이지</h1><p>'+esc(member.email)+'</p></header><div class="mypage-body"><aside><p class="eyebrow">FORM MEMBERSHIP</p><p>내 TasteDNA</p><button class="secondary" id="mypage-shop">FORM 컬렉션으로</button></aside><div><section class="mypage-intro"><p class="eyebrow">YOUR PERSONAL NOTES</p><h2>내 TasteDNA</h2><p>마음이 가는 선택에서 발견한 나의 취향.<br>이어서 답하거나 직접 고른 선호를 돌아보세요.</p></section><div class="mypage-categories"><span>의류 · 남성복 Simple</span><span>리빙 · 준비 중</span><span>뷰티 · 준비 중</span><span>라이프 · 준비 중</span></div><section class="mypage-records"><h2>확인 가능한 취향 기록</h2><p class="muted">진행 중인 Simple과 이 화면에서 열었던 기록만 표시해요. 전체 이력은 제공하지 않으며, 열었던 기록은 새로고침하면 목록에서 사라질 수 있어요.</p>'+records.map((r,i)=>'<article class="mypage-record"><div><p class="eyebrow">'+(r.status==='SUBMITTED'?'제출 완료':'진행 중')+'</p><h3>'+esc(r.apparelScope==='mens'?'남성복':r.apparelScope==='womens'?'여성복':'의류')+' Simple</h3><p class="muted">기록 '+esc(r.sessionId)+'</p></div><button class="primary" id="mypage-record-'+i+'">'+(r.status==='SUBMITTED'?'직접 선호 결과 보기':'이어서 답하기')+' →</button></article>').join('')+(!records.length?'<p class="mypage-empty">현재 조회 가능한 Simple 기록이 없습니다.</p>':'')+'</section><button class="secondary" id="mypage-start">TasteDNA 알아보기 →</button></div></div></section>';
+ records.forEach((r,i)=>document.querySelector('#mypage-record-'+i).onclick=()=>action(async()=>{
+  returnTo=r.sessionId;
+  if(r.status==='IN_PROGRESS')await api('/sessions/'+encodeURIComponent(r.sessionId)+'/resume',{});
+  await loadSession(r.sessionId);
+ }));
+ document.querySelector('#mypage-shop').onclick=()=>{returnTo=null;shop();};
+ document.querySelector('#mypage-start').onclick=()=>{returnTo=null;home();focusMain();};
+ focusMain();
+}
 async function continueTaste(){
  const target=returnTo;returnTo=null;
+ if(target==='mypage'){await myPage();return;}
  if(target&&target!=='taste'){await loadSession(target);return;}
  const active=await api('/sessions/active');
  if(active){await loadSession(active.sessionId);return;}
@@ -295,7 +327,8 @@ document.querySelector('#nav-shop').onclick=e=>{e.preventDefault();if(!busy)shop
 document.querySelector('#nav-taste').onclick=e=>{e.preventDefault();if(!busy){home();focusMain();}};
 // 같은 문서의 저장 링크로 이동해도 인증 확인과 세션 복원을 거친다.
 window.onhashchange=()=>{
- if(!busy&&new URLSearchParams(location.hash.slice(1)).get('session'))login();
+ if(!busy&&location.hash==='#mypage')openMyPage();
+ else if(!busy&&new URLSearchParams(location.hash.slice(1)).get('session'))login();
 };
 async function initialize(){
  loading('FORM을 불러오고 있어요.');
@@ -305,7 +338,7 @@ async function initialize(){
    try{member=await api('/auth/me');}catch(e){if(e.status!==401)throw e;}
   }
   updateMemberNav();
-  if(new URLSearchParams(location.hash.slice(1)).get('session'))login();else if(location.hash==='#taste')home();else shop();
+  if(location.hash==='#mypage')openMyPage();else if(new URLSearchParams(location.hash.slice(1)).get('session'))login();else if(location.hash==='#taste')home();else shop();
  }catch{
   main.innerHTML='<section class="error-panel"><p>FORM에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.</p><button id="retry-init" class="secondary">다시 연결</button></section>';
   main.querySelector('#retry-init').onclick=initialize;
