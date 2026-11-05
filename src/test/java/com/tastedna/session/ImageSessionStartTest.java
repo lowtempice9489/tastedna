@@ -56,6 +56,10 @@ class ImageSessionStartTest {
                 () -> service.startImageSimple("test-member", ApparelScope.womens));
         assertEquals(422, exception.getStatusCode().value());
         assertEquals("IMAGE_DEFINITION_NOT_READY", exception.getReason());
+        var generic = assertThrows(ResponseStatusException.class, () -> service.start("test-member",
+                new com.tastedna.session.api.dto.StartSessionRequest(com.tastedna.session.api.dto.Mode.SIMPLE, ApparelScope.womens)));
+        assertEquals(422, generic.getStatusCode().value());
+        assertEquals("IMAGE_DEFINITION_NOT_READY", generic.getReason());
         // 미완성 여성복을 기존 남성복 또는 모드별 활성 정의로 대체하지 않는다.
         verifyNoInteractions(definitions, questions, sessions, answers);
     }

@@ -49,7 +49,9 @@ public class TestSessionService {
     public SessionResponse start(
             String memberId,
             StartSessionRequest request) {
-
+        // 일반 시작 API로도 미완성 여성복 대신 다른 활성 정의를 사용하지 못하게 한다.
+        if (request.mode() == Mode.SIMPLE && request.apparelScope() == ApparelScope.womens)
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "IMAGE_DEFINITION_NOT_READY");
         return startInternal(memberId, request, null);
     }
 
