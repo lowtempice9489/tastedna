@@ -1,5 +1,25 @@
 # 여성복 Simple DB 구현 전 계약 점검 — 09-D-1
 
+## 13-B: Q05~Q07 V1 계약
+
+V18은 같은 여성복 정의에 Q05 A~J, Q06 A~H, Q07 A~K를 추가한다.
+모두 필수 복수선택이며 이미지 최대 3개 또는 배타 응답 `NONE` 하나를 제출한다.
+Q05·Q06의 NONE 표시명은 ‘판단하기 어려움’, Q07은 ‘회피 대상 없음’이다.
+기존 `exclusiveOptionIds` 검증을 재사용하고 빈 배열·이미지와 NONE 동시 선택은 거부한다.
+질문 문구와 일반 표시명은 13-B의 작성 승인에 따라 생성했으며 이미지 속성은 추론하지 않았다.
+이미지 경로·ID는 기존 fixture를 재사용한다. 이전 초안의 미확정 기록은 이 범위에서만 해소된다.
+
+Q05 이미지는 DIRECT_OUTFIT_PREFERENCE, Q06은 DIRECT_CLOTHING_PREFERENCE,
+Q07은 DIRECT_OUTFIT_AVOIDANCE로 직접 선택 사실만 기록한다.
+NONE은 Q05·Q06에서 PREFERENCE_UNDETERMINED, Q07에서 기존 NO_EXPLICIT_OUTFIT_AVOIDANCE로 기록한다.
+중립 관측은 응답 사실 보존용이며 긍정 선호·회피·후보 매핑으로 취급하지 않는다. 점수 payload는 빈 객체다.
+V18은 정의 활성화 및 기존 질문 수정 없이 INSERT만 수행한다. Q08~Q10과 시작 연결은 여전히 미완성이다.
+
+`WomensImageDefinitionTest`는 V18·fixture 경로, 응답 검증 및 실제 Raw 수집 코드의 중립 관측을 확인한다.
+기존 `WomensSharedDefinitionMysqlTest`는 V18 이후 총 7문항과 Q05~Q07 규칙까지 확인하도록 확장했다.
+실제 DB 실행은 기존 RUN_WOMENS_MYSQL_TESTS / DB_USERNAME / DB_PASSWORD 설정을 재사용하며
+tastedna_test 확인 후에만 Flyway를 실행한다. 13-B 작성 시 실제 MySQL 적용은 미실행이다.
+
 ## 13-A: 공통 Q01~Q04 부분 등록
 
 V17은 초안의 `6acc799d-1348-4f34-b756-593e9f5bfd52` / `SIMPLE-WOMENS-IMAGE-V1`을 재사용한다.

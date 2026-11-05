@@ -63,14 +63,14 @@ class WomensSharedDefinitionMysqlTest {
     @Autowired Flyway flyway;
 
     @Test void migratedDefinitionIsInactiveAndSharedQuestionsAndRulesMatchMens() {
-        assertEquals("17", flyway.info().current().getVersion().getVersion());
+        assertEquals("18", flyway.info().current().getVersion().getVersion());
         var definition = definitions.findById(WOMENS).orElseThrow();
         assertFalse(definition.isActive());
         assertEquals(10, definition.getQuestionCount());
         assertEquals("SIMPLE-WOMENS-IMAGE-V1", definition.getVersionCode());
         var rows = questions.findByIdDefinitionIdOrderByDisplayOrderAsc(WOMENS);
-        assertEquals(4, rows.size());
-        for (var row : rows) {
+        assertEquals(7, rows.size());
+        for (var row : rows.subList(0, 4)) {
             String qid = row.getId().getQuestionId();
             var male = questions.findByIdDefinitionIdAndIdQuestionId(MENS, qid).orElseThrow();
             assertEquals(mapper.readTree(male.getQuestionPayload()), mapper.readTree(row.getQuestionPayload()));
@@ -92,5 +92,20 @@ class WomensSharedDefinitionMysqlTest {
         assertEquals(422, assertThrows(ResponseStatusException.class,
                 () -> service.start("verification-no-session", new StartSessionRequest(Mode.SIMPLE, ApparelScope.womens))).getStatusCode().value());
         assertEquals(before, sessions.count());
+    }
+
+    @Test void imageQuestionsAndNeutralRulesMatchV18() throws Exception {
+        for (var entry : WomensImageDefinitionTest.questions().entrySet()) {
+            var question = questions.findByIdDefinitionIdAndIdQuestionId(WOMENS, entry.getKey()).orElseThrow();
+            assertTrue(question.isRequired());
+            assertEquals(entry.getValue(), mapper.readTree(question.getQuestionPayload()));
+            var registered = rules.findByIdDefinitionIdAndIdQuestionId(WOMENS, entry.getKey());
+            assertEquals(entry.getValue().path("options").size(), registered.size());
+            for (var rule : registered) {
+                assertEquals(WomensImageDefinitionTest.observation(entry.getKey(), rule.getId().getOptionId()),
+                        mapper.readTree(rule.getObservationPayload()));
+                assertEquals(mapper.readTree("{}"), mapper.readTree(rule.getScoringPayload()));
+            }
+        }
     }
 }
