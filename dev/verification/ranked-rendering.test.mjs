@@ -34,9 +34,24 @@ test('letter question layout preserves content, original images and saved select
  context.fixture=JSON.parse(readFileSync(new URL('../fixtures/simple/ranked_comparison_question_payload.json',import.meta.url),'utf8'));
  vm.runInContext("questions=[{questionId:'Q09',questionPayload:fixture}];answers.Q09={selections:[{comparisonId:'C01',selectedOptionId:'A'},{comparisonId:'C02',selectedOptionIds:['B','A']}]};render()",context);
  const ranked=vm.runInContext('main.innerHTML',context);
- assert.match(ranked,/1위 · 항목 B/);assert.match(ranked,/2위 · 항목 A/);
+ assert.match(ranked,/1위<\/span><span class="choice-name">항목 B/);assert.match(ranked,/2위<\/span><span class="choice-name">항목 A/);
  assert.match(ranked,/각 비교의 선택 안내를 따라주세요/);
  assert.equal(vm.runInContext("answers.Q09.selections[1].selectedOptionIds.join(',')",context),'B,A');
+});
+test('card types and rank badges follow removal, compaction and reselection',()=>{
+ const context=renderer();
+ context.fixture=JSON.parse(readFileSync(new URL('../fixtures/simple/ranked_comparison_question_payload.json',import.meta.url),'utf8'));
+ vm.runInContext("questions=[{questionId:'Q09',questionPayload:fixture}];answers.Q09={selections:[{comparisonId:'C01',selectedOptionId:'A'},{comparisonId:'C02',selectedOptionIds:['B','A','C']}]}",context);
+ const card=id=>vm.runInContext(`optionMarkup(fixture.comparisons[1].options.find(o=>o.id==='${id}'),questions[0],'C02')`,context);
+ vm.runInContext("answers.Q09=choose(fixture,answers.Q09,'A','C02')",context);
+ assert.match(card('A'),/rank-empty">미선택/);assert.doesNotMatch(card('A'),/checked/);
+ assert.match(card('C'),/rank-badge ">2위/);
+ vm.runInContext("answers.Q09=choose(fixture,answers.Q09,'A','C02')",context);
+ assert.match(card('A'),/choice-ranked selected/);assert.match(card('A'),/rank-badge ">3위/);
+ const single=vm.runInContext("optionMarkup(fixture.comparisons[0].options[0],questions[0],'C01')",context);
+ assert.match(single,/choice-single selected/);assert.match(single,/type="radio"/);assert.doesNotMatch(single,/rank-badge/);
+ const multiple=vm.runInContext("optionMarkup({id:'A',label:'항목 A'},{questionId:'Q07',questionPayload:{kind:'MULTIPLE_CHOICE'}})",context);
+ assert.match(multiple,/choice-multiple/);assert.match(multiple,/type="checkbox"/);assert.doesNotMatch(multiple,/rank-badge/);
 });
 test('rank badges, review, result and download preserve saved ranking',async()=>{
  const context=renderer();
@@ -46,7 +61,7 @@ test('rank badges, review, result and download preserve saved ranking',async()=>
    questions=[{questionId:'Q09',questionPayload:fixture}];`,context);
  const b=vm.runInContext("optionMarkup(fixture.comparisons[1].options[1],questions[0],'C02')",context);
  const a=vm.runInContext("optionMarkup(fixture.comparisons[1].options[0],questions[0],'C02')",context);
- assert.match(b,/checkbox/);assert.match(b,/1위 · 항목 B/);assert.match(a,/2위 · 항목 A/);
+ assert.match(b,/checkbox/);assert.match(b,/1위<\/span><span class="choice-name">항목 B/);assert.match(a,/2위<\/span><span class="choice-name">항목 A/);
  const review=vm.runInContext('answerLabels(questions[0])',context);
  assert.ok(review.indexOf('1위 항목 B')<review.indexOf('2위 항목 A'));
  assert.match(review,/이 비교에서 비선호: 항목 C/);

@@ -201,7 +201,9 @@ function optionMarkup(option,q,groupId){
  const selected=groupId?(ranked?rank>0:groupSelection===option.id):p.kind==='MULTIPLE_CHOICE'?answer?.selectedOptionIds?.includes(option.id):answer?.selectedOptionId===option.id;
  const multi=p.kind==='MULTIPLE_CHOICE'||ranked;
  const images=option.images||[];
- return '<div class="choice '+(selected?'selected':'')+'"><label>'+imageMarkup(images,option.label)+'<span class="label"><input type="'+(multi?'checkbox':'radio')+'" name="'+esc(groupId||q.questionId)+'" value="'+esc(option.id)+'" data-group="'+esc(groupId||'')+'" '+(selected?'checked':'')+'><span>'+(rank?rank+'위 · ':'')+esc(option.label)+'</span></span></label>'+(images.length?'<button class="zoom-button" type="button" data-zoom="'+esc(safeUrl(images[0]))+'">크게 보기 ↗</button>':'')+'</div>';
+ const kind=ranked?'ranked':multi?'multiple':'single';
+ const badge=ranked?'<span class="rank-badge '+(rank?'':'rank-empty')+'">'+(rank?rank+'위':'미선택')+'</span>':'';
+ return '<div class="choice choice-'+kind+' '+(selected?'selected':'')+'"><label>'+imageMarkup(images,option.label)+'<span class="label"><input type="'+(multi?'checkbox':'radio')+'" name="'+esc(groupId||q.questionId)+'" value="'+esc(option.id)+'" data-group="'+esc(groupId||'')+'" '+(selected?'checked':'')+'><span class="choice-copy">'+badge+'<span class="choice-name">'+esc(option.label)+'</span></span></span></label>'+(images.length?'<button class="zoom-button" type="button" data-zoom="'+esc(safeUrl(images[0]))+'">크게 보기 ↗</button>':'')+'</div>';
 }
 function render(){
  if(step===questions.length){review();return;}

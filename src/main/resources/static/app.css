@@ -15,4 +15,20 @@
 @media(max-width:700px){.question-letter{padding:22px 14px 0;margin:0 -6px}.letter-masthead{padding-bottom:16px;margin-bottom:18px;gap:10px}.letter-masthead span:first-child{font-size:23px}.letter-masthead span:last-child{font-size:8px;letter-spacing:1px}.question-letter .progress{margin-bottom:26px}.letter-number{font-size:36px}.question-letter .question-head{margin-bottom:28px}.question-letter .question-head .eyebrow{font-size:9px;letter-spacing:2px;margin-bottom:14px}.question-letter .question-head h1{font-size:25px;letter-spacing:-.8px}.question-letter .muted{font-size:13px}.question-letter .choices{gap:10px}.question-letter .choice label{padding:7px}.question-letter .choice .label{font-size:13px;padding:11px 2px 5px;align-items:flex-start}.question-letter .choice input{margin-top:3px}.question-letter .pictures.single img{height:auto;aspect-ratio:3/4}.question-letter .pictures:not(.single) img{height:auto;aspect-ratio:3/4}.question-letter .zoom-button{top:10px;right:10px;font-size:10px;padding:4px 7px}.question-letter .choices.text .choice label{padding:12px 8px}.question-letter .comparison h2{font-size:20px}.question-letter .comparison{margin:28px 0;padding-top:22px}.question-letter .navigation{display:grid;grid-template-columns:auto 1fr;margin-top:28px;padding:14px 0 10px;gap:10px}.question-letter .navigation button{padding:12px 14px}.question-letter .save-status{display:block;grid-row:2;grid-column:1/-1;font-size:10px}.question-letter .overview img{min-height:0}}
 @media(max-width:380px){.question-letter>.choices{grid-template-columns:1fr}.letter-masthead span:last-child{font-size:7px;letter-spacing:.5px}.question-letter .question-head h1{font-size:23px}}
 
+/* 단일·다중은 기본 입력 모양을 유지하고 순위형만 별도 배지를 표시한다. */
+.question-letter .choice label{padding:14px;display:flex;flex-direction:column;justify-content:space-between;gap:12px}
+.question-letter .choice .label{padding:4px 2px;min-height:32px;align-items:center}
+.question-letter .choice-copy{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+.question-letter .choice-name{word-break:keep-all;overflow-wrap:anywhere}
+.question-letter .choice.selected .choice-name{font-weight:600;color:#35422e}
+.question-letter .rank-badge{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;min-width:38px;min-height:28px;padding:3px 8px;border:1px solid #606c54;border-radius:3px;background:#606c54;color:white;font-size:12px;font-weight:600;line-height:1.5}
+.question-letter .rank-empty{border-style:dashed;border-color:#bcb3a5;background:transparent;color:#756c60;font-weight:400}
+.question-letter .choice-ranked.selected{border-color:#606c54;background:#eef1e7}
+.question-letter .choices.text .choice label{justify-content:center;align-items:stretch;min-height:80px;padding:16px}
+.question-letter .pictures img,.question-letter .overview img{object-fit:contain;filter:none;mix-blend-mode:normal;opacity:1}
+.question-letter .choice .zoom-button{position:static;display:block;width:calc(100% - 28px);margin:0 14px 12px;min-height:36px;background:transparent}
+.question-letter .choice:has(.zoom-button) label{height:auto}
+@media(hover:hover){.question-letter .choice:not(.selected):hover{border-color:#9b9e89;background:#faf9f1}.question-letter .choice .zoom-button:hover{background:#efede5}}
+@media(max-width:700px){.question-letter .choice label{padding:10px;gap:8px}.question-letter .choice .label{padding:3px 0;align-items:flex-start}.question-letter .choice input{margin-top:4px}.question-letter .choice-copy{gap:6px}.question-letter .choice-ranked .choice-copy{flex-direction:column;align-items:flex-start}.question-letter .choices.text .choice label{padding:12px;min-height:76px}.question-letter .choice .zoom-button{width:calc(100% - 20px);margin:0 10px 10px;min-height:36px}.question-letter .rank-badge{font-size:11px;min-height:26px}}
+
 
