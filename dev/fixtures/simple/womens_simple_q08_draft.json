@@ -1,0 +1,214 @@
+{
+  "status": "DRAFT_NOT_FOR_ACTIVATION",
+  "apparelScope": "WOMENS",
+  "mode": "SIMPLE",
+  "questionId": "Q08",
+  "note": "09-B 준비용 매핑. overviewImages는 비교 전체 합본, options.images는 선택 대상의 개별 이미지(묶음 선택은 여러 장). 합본은 desktop/mobile 순서이며 동시 표시 지시가 아님. 문구·최소 선택·관측 의미 확정 전 활성화 금지.",
+  "questionPayload": {
+    "kind": "COMPARISON",
+    "comparisons": [
+      {
+        "id": "C01",
+        "selectionMode": "SINGLE",
+        "overviewImages": [
+          "/assets/gender/female/Q08/C01/Q08_C01_AB_desktop.png",
+          "/assets/gender/female/Q08/C01/Q08_C01_AB_mobile.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q08/C01/A1.png",
+              "/assets/gender/female/Q08/C01/A2.png",
+              "/assets/gender/female/Q08/C01/A3.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q08/C01/B1.png",
+              "/assets/gender/female/Q08/C01/B2.png",
+              "/assets/gender/female/Q08/C01/B3.png"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "C02",
+        "selectionMode": "SINGLE",
+        "overviewImages": [
+          "/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_desktop_review.png",
+          "/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_mobile_review.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_A.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_B.png"
+            ]
+          },
+          {
+            "id": "C",
+            "images": [
+              "/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_C.png"
+            ]
+          },
+          {
+            "id": "D",
+            "images": [
+              "/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_D.png"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "C03",
+        "selectionMode": "SINGLE",
+        "overviewImages": [
+          "/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_desktop_review.png",
+          "/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_mobile_review.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_A.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_B.png"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "C04",
+        "selectionMode": "RANKED_MULTI_SELECT",
+        "overviewImages": [
+          "/assets/gender/female/Q08/C04/TasteDNA_WQ08_C04_knee_desktop.png",
+          "/assets/gender/female/Q08/C04/TasteDNA_WQ08_C04_knee_mobile.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q08/C04/A_미니.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q08/C04/TasteDNA_WQ08_C04_B_knee_individual.png"
+            ]
+          },
+          {
+            "id": "C",
+            "images": [
+              "/assets/gender/female/Q08/C04/C_롱.png"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "C05",
+        "selectionMode": "RANKED_MULTI_SELECT",
+        "overviewImages": [
+          "/assets/gender/female/Q08/C05/Q08_C05_desktop.png",
+          "/assets/gender/female/Q08/C05/Q08_C05_mobile.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q08/C05/Q08_C05_A.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q08/C05/Q08_C05_B.png"
+            ]
+          },
+          {
+            "id": "C",
+            "images": [
+              "/assets/gender/female/Q08/C05/Q08_C05_C.png"
+            ]
+          },
+          {
+            "id": "D",
+            "images": [
+              "/assets/gender/female/Q08/C05/Q08_C05_D.png"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "designEvidence": [
+    {
+      "comparisonId": "C01",
+      "sourceImage": "/assets/gender/female/Q08/C01/Q08_C01_AB_desktop.png",
+      "comparisonTopic": "핏 비교",
+      "optionMeaningsFromSource": {
+        "A": "정돈된 핏",
+        "B": "루즈·오버사이즈 핏"
+      }
+    },
+    {
+      "comparisonId": "C02",
+      "sourceImage": "/assets/gender/female/Q08/C02/TasteDNA_WQ08_C02_desktop_review.png",
+      "comparisonTopic": "표면 디자인 비교",
+      "optionMeaningsFromSource": {
+        "A": "무지",
+        "B": "문자",
+        "C": "심볼",
+        "D": "무늬"
+      }
+    },
+    {
+      "comparisonId": "C03",
+      "sourceImage": "/assets/gender/female/Q08/C03/TasteDNA_WQ08_C03_desktop_review.png",
+      "comparisonTopic": "실루엣 비교",
+      "optionMeaningsFromSource": {
+        "A": "허리 라인이 드러나는 스타일",
+        "B": "일자형 실루엣 스타일"
+      }
+    },
+    {
+      "comparisonId": "C04",
+      "sourceImage": "/assets/gender/female/Q08/C04/TasteDNA_WQ08_C04_knee_desktop.png",
+      "comparisonTopic": "스커트 길이 비교",
+      "optionMeaningsFromSource": null
+    },
+    {
+      "comparisonId": "C05",
+      "sourceImage": "/assets/gender/female/Q08/C05/Q08_C05_desktop.png",
+      "comparisonTopic": "장식 비교",
+      "optionMeaningsFromSource": {
+        "A": "무장식 미니멀",
+        "B": "작은 리본 포인트",
+        "C": "프릴 중심",
+        "D": "복합 장식"
+      }
+    }
+  ],
+  "unresolved": {
+    "prompt": "PENDING_APPROVAL",
+    "description": "PENDING_APPROVAL",
+    "finalDisplayLabels": "PENDING_APPROVAL",
+    "minimumSelectionsAndRequired": "PENDING_APPROVAL",
+    "observationMeaning": "PENDING_APPROVAL",
+    "conditions": "PENDING_APPROVAL",
+    "rankedOverviewCopy": "기존 합본의 하나를 고르는 안내는 순위형 정책과 다름. 이미지 변경 없이 경로만 기록했으며 실제 노출 전 안내 문구 정합성 검토 필요.",
+    "unlabeledOptionMeanings": "Q08 C04, Q09 C02의 옵션별 의미 이름은 코드·이미지 대응만 기록. 최종 표시명과 관측 의미 승인 필요."
+  }
+}

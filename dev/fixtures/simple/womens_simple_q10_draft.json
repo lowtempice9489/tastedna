@@ -1,0 +1,140 @@
+{
+  "status": "DRAFT_NOT_FOR_ACTIVATION",
+  "apparelScope": "WOMENS",
+  "mode": "SIMPLE",
+  "questionId": "Q10",
+  "note": "09-B 준비용 일반 다중선택 매핑. referenceImages는 전체 합본 참고 자료이며 선택 옵션이 아님. 미확정 사항 승인 전 활성화 금지.",
+  "questionPayload": {
+    "kind": "MULTIPLE_CHOICE",
+    "maxSelections": 6,
+    "options": [
+      {
+        "id": "A",
+        "images": [
+          "/assets/gender/female/Q10/A.png"
+        ]
+      },
+      {
+        "id": "B",
+        "images": [
+          "/assets/gender/female/Q10/B.png"
+        ]
+      },
+      {
+        "id": "C",
+        "images": [
+          "/assets/gender/female/Q10/C.png"
+        ]
+      },
+      {
+        "id": "D",
+        "images": [
+          "/assets/gender/female/Q10/D.png"
+        ]
+      },
+      {
+        "id": "E",
+        "images": [
+          "/assets/gender/female/Q10/E.png"
+        ]
+      },
+      {
+        "id": "F",
+        "images": [
+          "/assets/gender/female/Q10/F.png"
+        ]
+      },
+      {
+        "id": "G",
+        "images": [
+          "/assets/gender/female/Q10/G.png"
+        ]
+      },
+      {
+        "id": "H",
+        "images": [
+          "/assets/gender/female/Q10/H.png"
+        ]
+      },
+      {
+        "id": "I",
+        "images": [
+          "/assets/gender/female/Q10/I.png"
+        ]
+      },
+      {
+        "id": "J",
+        "images": [
+          "/assets/gender/female/Q10/J.png"
+        ]
+      },
+      {
+        "id": "K",
+        "images": [
+          "/assets/gender/female/Q10/K.png"
+        ]
+      },
+      {
+        "id": "L",
+        "images": [
+          "/assets/gender/female/Q10/L.png"
+        ]
+      },
+      {
+        "id": "M",
+        "images": [
+          "/assets/gender/female/Q10/M.png"
+        ]
+      },
+      {
+        "id": "N",
+        "images": [
+          "/assets/gender/female/Q10/N.png"
+        ]
+      },
+      {
+        "id": "O",
+        "images": [
+          "/assets/gender/female/Q10/O.png"
+        ]
+      },
+      {
+        "id": "P",
+        "images": [
+          "/assets/gender/female/Q10/P.png"
+        ]
+      },
+      {
+        "id": "Q",
+        "images": [
+          "/assets/gender/female/Q10/Q.png"
+        ]
+      },
+      {
+        "id": "R",
+        "images": [
+          "/assets/gender/female/Q10/R.png"
+        ]
+      },
+      {
+        "id": "S",
+        "images": [
+          "/assets/gender/female/Q10/S.png"
+        ]
+      }
+    ]
+  },
+  "designEvidence": [],
+  "unresolved": {
+    "prompt": "PENDING_APPROVAL",
+    "description": "PENDING_APPROVAL",
+    "finalDisplayLabels": "PENDING_APPROVAL",
+    "minimumSelectionsAndRequired": "PENDING_APPROVAL",
+    "observationMeaning": "PENDING_APPROVAL",
+    "noneOptionAndExclusivity": "PENDING_APPROVAL"
+  },
+  "referenceImages": {
+    "desktop": "/assets/gender/female/Q10/Q10_AS_desktop.png",
+    "mobile": "/assets/gender/female/Q10/Q10_AS_mobile.png"
+  }
+}

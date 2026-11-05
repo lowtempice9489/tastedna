@@ -1,0 +1,181 @@
+{
+  "status": "DRAFT_NOT_FOR_ACTIVATION",
+  "apparelScope": "WOMENS",
+  "mode": "SIMPLE",
+  "questionId": "Q09",
+  "note": "09-B 준비용 매핑. overviewImages는 비교 전체 합본, options.images는 선택 대상의 개별 이미지(묶음 선택은 여러 장). 합본은 desktop/mobile 순서이며 동시 표시 지시가 아님. 문구·최소 선택·관측 의미 확정 전 활성화 금지.",
+  "questionPayload": {
+    "kind": "COMPARISON",
+    "comparisons": [
+      {
+        "id": "C01",
+        "selectionMode": "SINGLE",
+        "overviewImages": [
+          "/assets/gender/female/Q09/C01/ChatGPT_Q09_C01_desktop.png",
+          "/assets/gender/female/Q09/C01/ChatGPT_Q09_C01_mobile.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q09/C01/A1.png",
+              "/assets/gender/female/Q09/C01/A2.png",
+              "/assets/gender/female/Q09/C01/A3.png",
+              "/assets/gender/female/Q09/C01/A4.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q09/C01/B1.png",
+              "/assets/gender/female/Q09/C01/B2.png",
+              "/assets/gender/female/Q09/C01/B3.png",
+              "/assets/gender/female/Q09/C01/B4.png"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "C02",
+        "selectionMode": "RANKED_MULTI_SELECT",
+        "overviewImages": [
+          "/assets/gender/female/Q09/C02/TasteDNA_WQ09_C02_desktop_5options.png",
+          "/assets/gender/female/Q09/C02/TasteDNA_WQ09_C02_mobile_5options.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q09/C02/A.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q09/C02/B.png"
+            ]
+          },
+          {
+            "id": "C",
+            "images": [
+              "/assets/gender/female/Q09/C02/C.png"
+            ]
+          },
+          {
+            "id": "D",
+            "images": [
+              "/assets/gender/female/Q09/C02/D.png"
+            ]
+          },
+          {
+            "id": "E",
+            "images": [
+              "/assets/gender/female/Q09/C02/E.png"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "C03",
+        "selectionMode": "SINGLE",
+        "overviewImages": [
+          "/assets/gender/female/Q09/C03/TasteDNA_WQ09_C03_desktop.png",
+          "/assets/gender/female/Q09/C03/TasteDNA_WQ09_C03_mobile.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q09/C03/A1.png",
+              "/assets/gender/female/Q09/C03/A2.png",
+              "/assets/gender/female/Q09/C03/A3.png",
+              "/assets/gender/female/Q09/C03/A4.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q09/C03/B1.png",
+              "/assets/gender/female/Q09/C03/B2.png",
+              "/assets/gender/female/Q09/C03/B3.png",
+              "/assets/gender/female/Q09/C03/B4.png"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "C04",
+        "selectionMode": "SINGLE",
+        "overviewImages": [
+          "/assets/gender/female/Q09/C04/TasteDNA_WQ09_C04_desktop.png",
+          "/assets/gender/female/Q09/C04/TasteDNA_WQ09_C04_mobile.png"
+        ],
+        "options": [
+          {
+            "id": "A",
+            "images": [
+              "/assets/gender/female/Q09/C04/A1.png",
+              "/assets/gender/female/Q09/C04/A2.png",
+              "/assets/gender/female/Q09/C04/A3.png",
+              "/assets/gender/female/Q09/C04/A4.png"
+            ]
+          },
+          {
+            "id": "B",
+            "images": [
+              "/assets/gender/female/Q09/C04/B1.png",
+              "/assets/gender/female/Q09/C04/B2.png",
+              "/assets/gender/female/Q09/C04/B3.png",
+              "/assets/gender/female/Q09/C04/B4.png"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "designEvidence": [
+    {
+      "comparisonId": "C01",
+      "sourceImage": "/assets/gender/female/Q09/C01/ChatGPT_Q09_C01_desktop.png",
+      "comparisonTopic": "스타일 표현 비교",
+      "optionMeaningsFromSource": {
+        "A": "단정하고 정돈된 스타일",
+        "B": "센스 있게 꾸민 스타일"
+      }
+    },
+    {
+      "comparisonId": "C02",
+      "sourceImage": "/assets/gender/female/Q09/C02/TasteDNA_WQ09_C02_desktop_5options.png",
+      "comparisonTopic": "무늬 활용 위치 비교",
+      "optionMeaningsFromSource": null
+    },
+    {
+      "comparisonId": "C03",
+      "sourceImage": "/assets/gender/female/Q09/C03/TasteDNA_WQ09_C03_desktop.png",
+      "comparisonTopic": "스타일 분위기 비교",
+      "optionMeaningsFromSource": {
+        "A": "중성적·매니시·보이시 스타일",
+        "B": "페미닌·로맨틱 스타일"
+      }
+    },
+    {
+      "comparisonId": "C04",
+      "sourceImage": "/assets/gender/female/Q09/C04/TasteDNA_WQ09_C04_desktop.png",
+      "comparisonTopic": "색상 조합 비교",
+      "optionMeaningsFromSource": {
+        "A": "톤온톤·유사색 스타일",
+        "B": "대비색·포인트 컬러 스타일"
+      }
+    }
+  ],
+  "unresolved": {
+    "prompt": "PENDING_APPROVAL",
+    "description": "PENDING_APPROVAL",
+    "finalDisplayLabels": "PENDING_APPROVAL",
+    "minimumSelectionsAndRequired": "PENDING_APPROVAL",
+    "observationMeaning": "PENDING_APPROVAL",
+    "conditions": "PENDING_APPROVAL",
+    "rankedOverviewCopy": "기존 합본의 하나를 고르는 안내는 순위형 정책과 다름. 이미지 변경 없이 경로만 기록했으며 실제 노출 전 안내 문구 정합성 검토 필요.",
+    "unlabeledOptionMeanings": "Q08 C04, Q09 C02의 옵션별 의미 이름은 코드·이미지 대응만 기록. 최종 표시명과 관측 의미 승인 필요."
+  }
+}
