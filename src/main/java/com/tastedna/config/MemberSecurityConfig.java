@@ -73,7 +73,8 @@ public class MemberSecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/me", "/api/v1/sessions/active",
                                 "/api/v1/sessions/{sessionId}", "/api/v1/sessions/{sessionId}/questions",
                                 "/api/v1/sessions/{sessionId}/questions/{questionId}",
-                                "/api/v1/sessions/{sessionId}/answers", "/api/v1/sessions/{sessionId}/preference-summary")
+                                "/api/v1/sessions/{sessionId}/answers", "/api/v1/sessions/{sessionId}/preference-summary",
+                                "/api/v1/sessions/{sessionId}/initial-candidates")
                         .hasRole("MEMBER")
                         .requestMatchers(HttpMethod.POST, "/api/v1/sessions", "/api/v1/sessions/simple-image",
                                 "/api/v1/sessions/{sessionId}/resume", "/api/v1/sessions/{sessionId}/answers",

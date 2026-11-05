@@ -33,9 +33,10 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 
 // 실제 필터·세션·CSRF·컨트롤러·서비스를 검증한다. Repository만 대역이므로 MySQL 통합 테스트는 아니다.
 @WebMvcTest(controllers = {MemberAuthController.class, TestSessionController.class,
-        ImageAssessmentController.class, PreferenceSummaryController.class,
+        ImageAssessmentController.class, PreferenceSummaryController.class, com.tastedna.scoring.api.SimpleInitialCandidateController.class,
         com.tastedna.config.FormClientConfigController.class, com.tastedna.demo.DemoProductController.class})
-@Import({MemberSecurityConfig.class, MemberAuthService.class, TestSessionService.class, PreferenceSummaryService.class})
+@Import({MemberSecurityConfig.class, MemberAuthService.class, TestSessionService.class, PreferenceSummaryService.class,
+        com.tastedna.scoring.application.SimpleInitialCandidateService.class})
 @ActiveProfiles("member-auth")
 class MemberAuthHttpTest {
     @Autowired MockMvc mvc;
@@ -48,6 +49,8 @@ class MemberAuthHttpTest {
     @MockitoBean SessionAnswerRepository answers;
     @MockitoBean AuthAttemptLimiter limiter;
     @MockitoBean com.tastedna.demo.DemoProductRepository products;
+    @MockitoBean com.tastedna.scoring.application.StyleCoreCandidateService initialCandidates;
+    @MockitoBean com.tastedna.scoring.persistence.ResultCandidateRepository candidateCatalog;
     private final Map<String, FormMember> stored = new HashMap<>();
     private static final String PASSWORD = "a long test password";
     private record Browser(MockHttpSession session, String token) {}
@@ -159,7 +162,8 @@ class MemberAuthHttpTest {
     @Test void unauthenticatedBasicAndCsrfLessRequestsAreRejected() throws Exception {
         String id = UUID.randomUUID().toString();
         for (String path : List.of("/api/v1/auth/me", "/api/v1/sessions/active", "/api/v1/sessions/" + id,
-                "/api/v1/sessions/" + id + "/answers", "/api/v1/sessions/" + id + "/preference-summary"))
+                "/api/v1/sessions/" + id + "/answers", "/api/v1/sessions/" + id + "/preference-summary",
+                "/api/v1/sessions/" + id + "/initial-candidates"))
             mvc.perform(get(path)).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
         mvc.perform(get("/api/v1/auth/me").with(httpBasic("dev-member-001", "irrelevant"))).andExpect(status().isUnauthorized());
         for (String path : List.of("/api/v1/auth/signup", "/api/v1/auth/login", "/api/v1/auth/logout"))
@@ -256,7 +260,7 @@ class MemberAuthHttpTest {
                 owner.getMemberId().equals(call.getArgument(1)) ? Optional.of(ownedByB) : Optional.empty());
         when(sessions.findByIdAndMemberIdForUpdate(eq(sessionB), anyString())).thenAnswer(call ->
                 owner.getMemberId().equals(call.getArgument(1)) ? Optional.of(ownedByB) : Optional.empty());
-        for (String suffix : List.of("", "/answers", "/questions", "/preference-summary"))
+        for (String suffix : List.of("", "/answers", "/questions", "/preference-summary", "/initial-candidates"))
             mvc.perform(get("/api/v1/sessions/" + sessionB + suffix).session(browser.session()))
                     .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("SESSION_NOT_FOUND"));
         mvc.perform(protectedPost("/api/v1/sessions/" + sessionB + "/answers", browser)
@@ -326,5 +330,11 @@ class MemberAuthHttpTest {
         mvc.perform(get("/api/v1/sessions/" + id + "/preference-summary").session(browser.session()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DIRECT_PREFERENCE_SUMMARY"))
                 .andExpect(jsonPath("$.comprehensiveResult").value(false));
+        when(answers.findById(new com.tastedna.session.domain.SessionAnswerId(id, "Q02"))).thenReturn(Optional.of(saved.get("Q02")));
+        when(questions.findByIdDefinitionIdAndIdQuestionId(definitionId, "Q02")).thenReturn(Optional.of(questionRows.get(1)));
+        mvc.perform(get("/api/v1/sessions/" + id + "/initial-candidates").session(browser.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INITIAL_CANDIDATES"))
+                .andExpect(jsonPath("$.finalResult").value(false)).andExpect(jsonPath("$.candidates").isEmpty());
+        verify(initialCandidates).extractCompatibleDirectEvidence(eq(memberId), eq(id), eq(definitionId), any(), any());
     }
 }

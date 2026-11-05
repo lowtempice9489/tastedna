@@ -99,8 +99,33 @@ public class StyleCoreCandidateService {
         ));
     }
 
-    // DB의 Q02 직접 선호 매핑을 기존 후보 추출기 입력으로 변환한다.
-    // 직접 선택한 스타일만 연결하며 최종 RESULT를 확정하지 않는다.
+    // 공통 Q02 계약과 일치하는 관측만 기존 후보 매핑에 연결한다.
+    // 성별별 판별이나 실험용 속성 점수는 이 경로에서 사용하지 않는다.
+    public List<ResultCandidateEvidence> extractCompatibleDirectEvidence(
+            String memberId, String sessionId, String definitionId,
+            JsonNode approvedQuestion, JsonNode presentedQuestion) {
+        var mapping = loadDirectMapping().deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) mapping).put("sourceDefinitionId", definitionId);
+        var labels = new java.util.HashMap<String, String>();
+        for (JsonNode option : approvedQuestion.path("options"))
+            labels.put(option.path("id").asString(), option.path("label").asString());
+        var compatible = new java.util.HashSet<String>();
+        for (JsonNode option : presentedQuestion.path("options")) {
+            String id = option.path("id").asString();
+            if (labels.containsKey(id) && labels.get(id).equals(option.path("label").asString()))
+                compatible.add(id);
+        }
+        // ID만 같은 선택지를 오인하지 않도록 승인된 표시명과 직접 관측값을 함께 확인한다.
+        var direct = observationService.collectRaw(memberId, sessionId)
+                .getOrDefault("DIRECT_FASHION_LOOK_PREFERENCE", List.of()).stream()
+                .filter(o -> definitionId.equals(o.definitionId()) && "Q02".equals(o.questionId()))
+                .filter(o -> compatible.contains(o.optionId()) && labels.get(o.optionId()).equals(o.observedValue()))
+                .toList();
+        return StyleCoreCandidateExtractor.extractWithEvidence(
+                mapper.valueToTree(Map.of("DIRECT_FASHION_LOOK_PREFERENCE", direct)), mapping);
+    }
+
+    // DB의 승인된 직접 매핑을 재사용하며 새로운 후보 대응을 만들지 않는다.
     private JsonNode loadDirectMapping() {
         String definitionId = "22222222-2222-4222-8222-222222222222";
 
