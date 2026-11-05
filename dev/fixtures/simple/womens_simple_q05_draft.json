@@ -1,0 +1,81 @@
+{
+  "status": "DRAFT_NOT_FOR_ACTIVATION",
+  "apparelScope": "WOMENS",
+  "mode": "SIMPLE",
+  "questionId": "Q05",
+  "note": "DB 구현 준비용 이미지 매핑. 미확정 항목 승인 전 question_payload 등록 및 활성화 금지. 합성된 desktop/mobile 안내 이미지는 개별 선택지에 포함하지 않음.",
+  "questionPayload": {
+    "kind": "MULTIPLE_CHOICE",
+    "maxSelections": 3,
+    "options": [
+      {
+        "id": "A",
+        "images": [
+          "/assets/gender/female/Q05/A.png"
+        ]
+      },
+      {
+        "id": "B",
+        "images": [
+          "/assets/gender/female/Q05/B.png"
+        ]
+      },
+      {
+        "id": "C",
+        "images": [
+          "/assets/gender/female/Q05/C.png"
+        ]
+      },
+      {
+        "id": "D",
+        "images": [
+          "/assets/gender/female/Q05/D.png"
+        ]
+      },
+      {
+        "id": "E",
+        "images": [
+          "/assets/gender/female/Q05/E.png"
+        ]
+      },
+      {
+        "id": "F",
+        "images": [
+          "/assets/gender/female/Q05/F.png"
+        ]
+      },
+      {
+        "id": "G",
+        "images": [
+          "/assets/gender/female/Q05/G.png"
+        ]
+      },
+      {
+        "id": "H",
+        "images": [
+          "/assets/gender/female/Q05/H.png"
+        ]
+      },
+      {
+        "id": "I",
+        "images": [
+          "/assets/gender/female/Q05/I.png"
+        ]
+      },
+      {
+        "id": "J",
+        "images": [
+          "/assets/gender/female/Q05/J.png"
+        ]
+      }
+    ]
+  },
+  "unresolved": {
+    "prompt": "PENDING_APPROVAL",
+    "description": "PENDING_APPROVAL",
+    "optionLabels": "PENDING_APPROVAL",
+    "minimumSelectionsAndRequired": "PENDING_APPROVAL",
+    "noneOptionAndExclusivity": "PENDING_APPROVAL",
+    "observationMeaning": "PENDING_APPROVAL"
+  }
+}
