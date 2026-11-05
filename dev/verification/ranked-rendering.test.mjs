@@ -13,6 +13,31 @@ function renderer() {
  vm.runInContext(source.replace(/^import .*;\r?\n/gm,'').replace(/initialize\(\);\s*$/, ''),context);
  return context;
 }
+test('letter question layout preserves content, original images and saved selections',()=>{
+ const context=renderer();
+ context.fixture={kind:'SINGLE_CHOICE',prompt:'원래 질문 <제목>',description:'원래 설명',options:[
+  {id:'A',label:'선택 A',images:['/assets/gender/male/Q10/A.png']},
+  {id:'B',label:'선택 B',images:[]}
+ ]};
+ vm.runInContext("session={apparelScope:'mens'};questions=[{questionId:'Q01',questionPayload:fixture}];answers.Q01={selectedOptionId:'A'};render()",context);
+ const html=vm.runInContext('main.innerHTML',context);
+ assert.match(html,/<article class="question-letter" aria-labelledby="question-title">/);
+ assert.match(html,/<h1 id="question-title">원래 질문 &lt;제목&gt;<\/h1>/);
+ assert.match(html,/원래 설명/);
+ assert.match(html,/01 \/ 10/);
+ assert.match(html,/src="\/assets\/gender\/male\/Q10\/A.png"/);
+ assert.match(html,/type="radio"[^>]*value="A"[^>]*checked/);
+ assert.match(html,/id="back" disabled/);
+ assert.match(html,/id="next">다음 질문/);
+ assert.equal(vm.runInContext('answers.Q01.selectedOptionId',context),'A');
+
+ context.fixture=JSON.parse(readFileSync(new URL('../fixtures/simple/ranked_comparison_question_payload.json',import.meta.url),'utf8'));
+ vm.runInContext("questions=[{questionId:'Q09',questionPayload:fixture}];answers.Q09={selections:[{comparisonId:'C01',selectedOptionId:'A'},{comparisonId:'C02',selectedOptionIds:['B','A']}]};render()",context);
+ const ranked=vm.runInContext('main.innerHTML',context);
+ assert.match(ranked,/1위 · 항목 B/);assert.match(ranked,/2위 · 항목 A/);
+ assert.match(ranked,/각 비교의 선택 안내를 따라주세요/);
+ assert.equal(vm.runInContext("answers.Q09.selections[1].selectedOptionIds.join(',')",context),'B,A');
+});
 test('rank badges, review, result and download preserve saved ranking',async()=>{
  const context=renderer();
  const fixture=JSON.parse(readFileSync(new URL('../fixtures/simple/ranked_comparison_question_payload.json',import.meta.url),'utf8'));
