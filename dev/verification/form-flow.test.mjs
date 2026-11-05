@@ -26,6 +26,21 @@ function screen(){
  return {context,node,calls,client,run:code=>vm.runInContext(code,context)};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
+test('womens card only shows preparation notice and returns to wardrobe selection',()=>{
+ const {run,node,calls}=screen();
+ run('selectApparel();');
+ assert.match(node('main').innerHTML,/wardrobe-grid/);
+ assert.match(node('main').innerHTML,/wardrobe-name">남성복/);
+ assert.match(node('main').innerHTML,/wardrobe-pending">준비 중/);
+ node('#choose-womens').onclick();
+ assert.match(node('main').innerHTML,/여성복 취향 테스트를/);
+ assert.match(node('main').innerHTML,/준비하고 있어요/);
+ node('#scope-back').onclick();
+ assert.match(node('main').innerHTML,/id="wardrobe-title"/);
+ node('#scope-back').onclick();
+ assert.match(node('main').innerHTML,/id="category-title"/);
+ assert.equal(calls.length,0);
+});
 test('atelier cover retains wardrobe selection and FORM login entry without starting an anonymous assessment',()=>{
  const {run,node,calls}=screen();
  run('home();');
@@ -34,7 +49,7 @@ test('atelier cover retains wardrobe selection and FORM login entry without star
  node('#begin').onclick();
  assert.match(node('main').innerHTML,/어떤 취향을 탐색해볼까요/);
  node('#category-apparel').onclick();
- assert.match(node('main').innerHTML,/여성 · 준비 중/);
+ assert.match(node('main').innerHTML,/여성복 · 준비 중 안내/);
  node('#choose-mens').onclick();
  assert.match(node('main').innerHTML,/FORM 로그인/);
  assert.equal(run('returnTo'),'taste');assert.equal(calls.length,0);

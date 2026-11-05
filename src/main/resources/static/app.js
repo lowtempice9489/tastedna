@@ -88,7 +88,11 @@ function selectCategory(){
 }
 function selectApparel(){
  history.replaceState(null,'','#taste');
- main.innerHTML='<section class="login"><p class="eyebrow">CHOOSE YOUR WARDROBE</p><h1>어떤 옷의 취향을<br>알아볼까요?</h1><p class="muted">살펴보고 싶은 의류를 선택해주세요.</p><button class="primary" id="choose-mens">남성</button><button class="secondary" id="choose-womens">여성 · 준비 중</button><small>남성복은 지금 테스트할 수 있어요. 여성복은 질문과 선택지를 준비하고 있어요.</small><button class="secondary" id="scope-back">← 소개로</button></section>';
+ main.innerHTML=`<section class="wardrobe-screen" aria-labelledby="wardrobe-title"><p class="eyebrow">TASTEDNA / CHOOSE YOUR WARDROBE</p><h1 id="wardrobe-title">어떤 옷의 취향을<br>알아볼까요?</h1><p class="wardrobe-description">살펴보고 싶은 의류를 선택해주세요.</p>
+ <div class="wardrobe-grid">
+ <button type="button" class="wardrobe-card wardrobe-mens" id="choose-mens"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 19-18 9-6 51 17 3 4-28v34h36V54l4 28 17-3-6-51-18-9-15 9Z"/><path d="m35 19 15 9-12 19-8-20m35-8L50 28l12 19 8-20M50 28v60M35 62h9m12 0h9"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">MENSWEAR</span><span class="wardrobe-name">남성복</span><span class="wardrobe-detail">마음이 가는 색과 스타일,<br>나의 의류 취향을 발견해보세요.</span><span class="wardrobe-cta">취향 알아보기 ↗</span></span></button>
+ <button type="button" class="wardrobe-card wardrobe-womens" id="choose-womens" aria-label="여성복 · 준비 중 안내"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 18-16 9-8 34 15 4 9-23-3 43h36l-3-43 9 23 15-4-8-34-16-9-15 8Z"/><path d="m35 18 15 8-10 13-10-18m35-3L50 26l10 13 10-18M50 26v59M33 68h34"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">WOMENSWEAR</span><span class="wardrobe-name">여성복</span><span class="wardrobe-detail">여성복의 다양한 취향을 담을<br>질문과 선택지를 준비하고 있어요.</span><span class="wardrobe-pending">준비 중</span><span class="wardrobe-hint">준비 안내 보기</span></span></button>
+ </div><p class="wardrobe-note">현재 남성복 테스트를 이용할 수 있어요.</p><button type="button" class="secondary" id="scope-back">← 카테고리로</button></section>`;
  document.querySelector('#choose-mens').onclick=login;
  document.querySelector('#choose-womens').onclick=womenComingSoon;
  document.querySelector('#scope-back').textContent='← 카테고리로';
