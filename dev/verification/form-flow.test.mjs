@@ -26,6 +26,28 @@ function screen(){
  return {context,node,calls,client,run:code=>vm.runInContext(code,context)};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
+test('Deep remains non-interactive and mode back returns to wardrobe',()=>{
+ const {run,node,calls}=screen();
+ run('selectApparel();');node('#choose-mens').onclick();
+ const html=node('main').innerHTML;
+ assert.match(html,/<article class="mode-card mode-deep" aria-disabled="true"/);
+ assert.match(html,/mode-tag">준비 중/);
+ assert.equal((html.match(/<button[^>]*mode-card/g)||[]).length,1);
+ assert.doesNotMatch(html,/id="choose-deep"/);
+ node('#mode-back').onclick();assert.match(node('main').innerHTML,/id="wardrobe-title"/);
+ assert.equal(calls.length,0);
+});
+test('authenticated Simple choice preserves active session resume and existing new-session endpoint',async()=>{
+ for(const active of [{sessionId:'existing'},null]){
+  const {run,node,calls,client}=screen();
+  client.request=async(path,body)=>{calls.push([path,body]);return path==='/sessions/active'?active:{sessionId:'new-simple'};};
+  run("member={memberId:'form-a'};loadSession=async id=>{globalThis.loaded=id;};selectApparel();");
+  node('#choose-mens').onclick();assert.equal(calls.length,0);
+  node('#choose-simple').onclick();await settle();
+  assert.equal(run('loaded'),active?'existing':'new-simple');
+  assert.deepEqual(calls.map(c=>c[0]),active?['/sessions/active']:['/sessions/active','/sessions/simple-image']);
+ }
+});
 test('womens card only shows preparation notice and returns to wardrobe selection',()=>{
  const {run,node,calls}=screen();
  run('selectApparel();');
@@ -51,6 +73,9 @@ test('atelier cover retains wardrobe selection and FORM login entry without star
  node('#category-apparel').onclick();
  assert.match(node('main').innerHTML,/여성복 · 준비 중 안내/);
  node('#choose-mens').onclick();
+ assert.match(node('main').innerHTML,/id="mode-title"/);
+ assert.equal(calls.length,0);
+ node('#choose-simple').onclick();
  assert.match(node('main').innerHTML,/FORM 로그인/);
  assert.equal(run('returnTo'),'taste');assert.equal(calls.length,0);
 });

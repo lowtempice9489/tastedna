@@ -93,7 +93,7 @@ function selectApparel(){
  <button type="button" class="wardrobe-card wardrobe-mens" id="choose-mens"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 19-18 9-6 51 17 3 4-28v34h36V54l4 28 17-3-6-51-18-9-15 9Z"/><path d="m35 19 15 9-12 19-8-20m35-8L50 28l12 19 8-20M50 28v60M35 62h9m12 0h9"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">MENSWEAR</span><span class="wardrobe-name">남성복</span><span class="wardrobe-detail">마음이 가는 색과 스타일,<br>나의 의류 취향을 발견해보세요.</span><span class="wardrobe-cta">취향 알아보기 ↗</span></span></button>
  <button type="button" class="wardrobe-card wardrobe-womens" id="choose-womens" aria-label="여성복 · 준비 중 안내"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 18-16 9-8 34 15 4 9-23-3 43h36l-3-43 9 23 15-4-8-34-16-9-15 8Z"/><path d="m35 18 15 8-10 13-10-18m35-3L50 26l10 13 10-18M50 26v59M33 68h34"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">WOMENSWEAR</span><span class="wardrobe-name">여성복</span><span class="wardrobe-detail">여성복의 다양한 취향을 담을<br>질문과 선택지를 준비하고 있어요.</span><span class="wardrobe-pending">준비 중</span><span class="wardrobe-hint">준비 안내 보기</span></span></button>
  </div><p class="wardrobe-note">현재 남성복 테스트를 이용할 수 있어요.</p><button type="button" class="secondary" id="scope-back">← 카테고리로</button></section>`;
- document.querySelector('#choose-mens').onclick=login;
+ document.querySelector('#choose-mens').onclick=selectTestMode;
  document.querySelector('#choose-womens').onclick=womenComingSoon;
  document.querySelector('#scope-back').textContent='← 카테고리로';
  document.querySelector('#scope-back').onclick=selectCategory;
@@ -102,6 +102,20 @@ function selectApparel(){
 function womenComingSoon(){
  main.innerHTML='<section class="login"><p class="eyebrow">WOMENS · COMING SOON</p><h1>여성복 취향 테스트를<br>준비하고 있어요.</h1><p class="muted">여성복에 맞는 질문과 더 다양한 이미지 선택지를 정리하고 있어요. 준비가 끝나면 여기서 시작할 수 있어요.</p><button class="primary" id="scope-back">← 남성 · 여성 다시 선택</button></section>';
  document.querySelector('#scope-back').onclick=selectApparel;
+ focusMain();
+}
+function selectTestMode(){
+ history.replaceState(null,'','#taste');
+ // Deep은 비대화형 카드로 두어 공통 버튼 활성화 처리에서도 시작할 수 없게 한다.
+ main.innerHTML=`<section class="wardrobe-screen mode-screen" aria-labelledby="mode-title">
+ <p class="eyebrow">TASTEDNA / MENSWEAR</p><h1 id="mode-title">어떤 방식으로<br>취향을 알아볼까요?</h1><p class="wardrobe-description">지금은 Simple로 나의 취향 기록을 시작할 수 있어요.</p>
+ <div class="wardrobe-grid">
+ <button type="button" class="mode-card mode-simple" id="choose-simple"><span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle cx="32" cy="36" r="22"/><path d="M32 14V5m-7 0h14M32 22v15l9 5M48 17l5-5"/></svg></span><span class="mode-name">Simple</span><span class="mode-tag">10문항 · 남성복</span><span class="mode-description">색과 스타일, 마음이 가는 착장을 고르고<br>직접 선택한 선호를 기록해보세요.</span><span class="mode-action">Simple 시작하기 <span aria-hidden="true">↗</span></span></button>
+ <article class="mode-card mode-deep" aria-disabled="true" aria-labelledby="deep-title"><span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle cx="27" cy="27" r="18"/><path d="m40 40 15 15M20 19q8-6 14 2"/></svg></span><h2 class="mode-name" id="deep-title">Deep</h2><span class="mode-tag">준비 중</span><p class="mode-description">더 깊이 취향을 탐색할 수 있도록<br>질문과 경험을 준비하고 있어요.</p><span class="mode-unavailable">아직 시작할 수 없어요</span></article>
+ </div><p class="wardrobe-note">진행 중인 Simple 기록이 있다면 이어서 답할 수 있어요.</p><button type="button" class="secondary" id="mode-back">← 의류 선택으로</button>
+ </section>`;
+ document.querySelector('#choose-simple').onclick=login;
+ document.querySelector('#mode-back').onclick=selectApparel;
  focusMain();
 }
 function login(){
