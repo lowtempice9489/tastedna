@@ -15,12 +15,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 
-@WebMvcTest(controllers = TestSessionController.class, properties = "DEV_MEMBER_PASSWORD=local-test-only-password")
+@WebMvcTest(controllers = {TestSessionController.class, com.tastedna.config.FormClientConfigController.class}, properties = "DEV_MEMBER_PASSWORD=local-test-only-password")
 @ActiveProfiles("local")
 @Import(SecurityConfig.class)
 class LocalAuthenticationRegressionTest {
     @Autowired MockMvc mvc;
     @MockitoBean TestSessionService service;
+    @Test void localFrontendModeIsExplicitAndPublic() throws Exception {
+        mvc.perform(get("/api/v1/form/config")).andExpect(status().isOk()).andExpect(jsonPath("$.authMode").value("local"));
+        mvc.perform(get("/form-auth.mjs")).andExpect(status().isOk());
+    }
     @Test void existingThreeDevelopmentIdentitiesAreUnchanged() throws Exception {
         for (String name : new String[]{"dev-member-001", "dev-member-002", "dev-image-demo"}) {
             mvc.perform(get("/api/v1/sessions/active").with(httpBasic(name, "local-test-only-password")))

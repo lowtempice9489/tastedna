@@ -26,6 +26,7 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/api/v1/form/config", "/form-auth.mjs").permitAll()
                         .requestMatchers(
                                 HttpMethod.GET, "/api/v1/health"
                         ).permitAll()

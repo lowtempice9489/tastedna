@@ -6,7 +6,7 @@ import java.util.List;
 
 // 로컬 전시용 API. 인증·주문·결제는 도입 쇼핑몰의 책임으로 남긴다.
 @RestController
-@Profile("local")
+@Profile("local | member-auth")
 @RequestMapping("/api/v1/demo/products")
 public class DemoProductController {
     private final DemoProductRepository repository;

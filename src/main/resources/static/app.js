@@ -1,8 +1,10 @@
 import {storefront} from './shop.mjs';
+import {createClient} from './form-auth.mjs';
 import {activeGroups, selectionMap, choose, valid, isRanked} from './assessment-state.mjs';
 
 const main=document.querySelector('main'), notice=document.querySelector('#notice'), dialog=document.querySelector('#zoom');
-let authorization='', session=null, questions=[], answers={}, step=0, busy=false, toastTimer;
+const client=createClient();
+let authMode, member=null, returnTo=null, session=null, questions=[], answers={}, step=0, busy=false, toastTimer;
 const titles=['COLOR','STYLE','SILHOUETTE','PATTERN','FIRST IMPRESSION','YOUR WARDROBE','NOT FOR ME','THE DETAILS','STYLING','FINAL LOOK'];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const asset=p=>'/assets/gender/male/'+p;
@@ -11,13 +13,15 @@ function toast(message){notice.textContent=message;clearTimeout(toastTimer);toas
 function focusMain(){main.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});}
 function loading(message){main.innerHTML='<div class="loading"><div class="spinner"></div><p>'+esc(message)+'</p></div>';}
 async function api(path, body){
- const response=await fetch('/api/v1'+path,{method:body===undefined?'GET':'POST',headers:{Authorization:authorization,'X-Requested-With':'XMLHttpRequest',...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
- if(response.status===204)return null;
- const data=await response.json().catch(()=>({}));
- if(!response.ok){const error=new Error(data.code||'HTTP_'+response.status);error.status=response.status;throw error;}
- return data;
+ return client.request(path,body);
 }
 const errors={
+ INVALID_CREDENTIALS:'이메일 또는 비밀번호를 확인해주세요.',
+ EMAIL_ALREADY_REGISTERED:'이미 가입된 이메일입니다. FORM 로그인으로 이동해주세요.',
+ VALIDATION_FAILED:'이메일 형식과 비밀번호 조건을 확인해주세요.',
+ AUTH_RATE_LIMITED:'요청이 많습니다. 잠시 후 다시 시도해주세요.',
+ CSRF_INVALID:'보안 확인이 만료되었습니다. 다시 시도해주세요.',
+ ACCESS_DENIED:'이 요청에 접근할 권한이 없습니다.',
  ACTIVE_DEFINITION_NOT_FOUND:'새 질문 정의가 아직 DB에 등록되지 않았습니다. 서버의 마이그레이션 적용 상태를 확인해주세요.',
  SESSION_REVISION_CONFLICT:'다른 화면에서 답변이 바뀌었어요. 최신 저장 답변을 다시 불러왔습니다.',
  SESSION_NOT_EDITABLE:'이미 제출한 테스트입니다. 결과 화면으로 이동합니다.',
@@ -34,6 +38,10 @@ async function action(fn){
  if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);
  try{await fn();}
  catch(e){
+  if(authMode==='member'&&e.status===401&&e.message!=='INVALID_CREDENTIALS'){
+   returnTo=new URLSearchParams(location.hash.slice(1)).get('session')||returnTo||'taste';
+   clearMember();formAuth();toast('FORM 로그인이 필요합니다. 저장된 답변은 로그인 후 이어갈 수 있어요.');return;
+  }
   if(e.message==='SESSION_REVISION_CONFLICT'||e.message==='SESSION_NOT_EDITABLE'||e.message==='SESSION_NOT_SUBMITTABLE'){
    try{await loadSession(session.sessionId);}catch{}
   }
@@ -60,9 +68,15 @@ function womenComingSoon(){
  focusMain();
 }
 function login(){
+ if(authMode==='member'){
+  returnTo=new URLSearchParams(location.hash.slice(1)).get('session')||'taste';
+  if(member)action(continueTaste);else formAuth();return;
+ }
+ if(authMode!=='local')return;
  main.innerHTML='<form class="login"><p class="eyebrow">YOUR PERSONAL STUDY</p><h2>취향의 기록을<br>시작해볼까요?</h2><p class="muted">계정으로 연결하면 저장된 질문부터 이어갈 수 있어요.</p><label for="member">개발용 회원 ID</label><input id="member" autocomplete="username" value="dev-image-demo" required><label for="password">개발용 비밀번호</label><input id="password" type="password" autocomplete="current-password" required><button class="primary">연결하고 시작하기 →</button><small>현재는 로컬 체험 버전입니다. 서버에 설정한 개발용 계정으로 연결하세요. 여성복 문항은 준비 중입니다.</small></form>';
  document.querySelector('form').onsubmit=e=>{e.preventDefault();const member=document.querySelector('#member').value.trim(),password=document.querySelector('#password').value;
- authorization='Basic '+btoa(Array.from(new TextEncoder().encode(member+':'+password),b=>String.fromCharCode(b)).join(''));
+ client.setBasic('Basic '+btoa(Array.from(new TextEncoder().encode(member+':'+password),b=>String.fromCharCode(b)).join('')));
+ document.querySelector('#password').value='';
  action(async()=>{
   const id=new URLSearchParams(location.hash.slice(1)).get('session');
   if(id){await loadSession(id);return;}
@@ -72,6 +86,47 @@ function login(){
   await loadSession(session.sessionId);
  });
  };focusMain();
+}
+function clearMember(){
+ member=null;session=null;questions=[];answers={};step=0;client.clear();updateMemberNav();
+ if(dialog.open)dialog.close();
+}
+function updateMemberNav(){
+ const nav=document.querySelector('#member-nav');
+ if(authMode!=='member'){nav.textContent=authMode==='local'?'LOCAL · 개발용 체험':'';return;}
+ nav.innerHTML=member?'<span>'+esc(member.email)+'</span><button id="form-logout">로그아웃</button>':'<button id="form-login">FORM 로그인</button><button id="form-signup">회원가입</button>';
+ nav.querySelector('#form-login')?.addEventListener('click',()=>{if(!busy){returnTo=new URLSearchParams(location.hash.slice(1)).get('session')||null;formAuth();}});
+ nav.querySelector('#form-signup')?.addEventListener('click',()=>{if(!busy){returnTo=new URLSearchParams(location.hash.slice(1)).get('session')||null;formAuth(true);}});
+ nav.querySelector('#form-logout')?.addEventListener('click',()=>action(async()=>{
+  await api('/auth/logout',{});returnTo=null;clearMember();shop();toast('로그아웃했습니다.');
+ }));
+}
+async function continueTaste(){
+ const target=returnTo;returnTo=null;
+ if(target&&target!=='taste'){await loadSession(target);return;}
+ const active=await api('/sessions/active');
+ if(active){await loadSession(active.sessionId);return;}
+ session=await api('/sessions/simple-image',{});await loadSession(session.sessionId);
+}
+function formAuth(signup=false,email=''){
+ main.innerHTML='<form class="login form-auth"><p class="eyebrow">FORM / MEMBERSHIP</p><h1>'+ (signup?'FORM 회원가입':'FORM 로그인')+'</h1><p class="muted">'+(returnTo?'FORM 회원으로 로그인하고 TasteDNA 취향 기록을 이어가세요.':'나의 스타일을 발견하는 곳, FORM에 오신 것을 환영합니다.')+'</p><label for="form-email">이메일</label><input id="form-email" name="email" type="email" autocomplete="username" maxlength="254" value="'+esc(email)+'" required><label for="form-password">비밀번호</label><input id="form-password" name="password" type="password" autocomplete="'+(signup?'new-password':'current-password')+'" '+(signup?'minlength="12" maxlength="72"':'')+' required>'+(signup?'<small id="password-help">12자 이상, UTF-8 기준 72바이트 이하로 입력해주세요.</small><label for="form-confirm">비밀번호 확인</label><input id="form-confirm" type="password" autocomplete="new-password" required>':'')+'<button class="primary" type="submit">'+(signup?'FORM 회원가입':'로그인')+'</button><button class="secondary" type="button" id="auth-switch">'+(signup?'이미 회원이신가요? 로그인':'처음이신가요? 회원가입')+'</button><button class="auth-back" type="button" id="auth-back">컬렉션으로 돌아가기</button><small>TasteDNA는 FORM에서 제공하는 패션 취향 기록 기능입니다.</small></form>';
+ const form=main.querySelector('form');
+ form.onsubmit=e=>{e.preventDefault();
+  const email=form.querySelector('#form-email').value.trim(),input=form.querySelector('#form-password'),password=input.value;
+  if(signup&&(password!==form.querySelector('#form-confirm').value||new TextEncoder().encode(password).length>72)){
+   toast('비밀번호 확인이 일치하는지, 비밀번호가 72바이트 이하인지 확인해주세요.');return;
+  }
+  action(async()=>{
+   try{
+    const data=await api(signup?'/auth/signup':'/auth/login',{email,password});
+    if(signup){formAuth(false,email);toast('가입이 완료되었습니다. FORM에 로그인해주세요.');}
+    else{member=data;updateMemberNav();if(returnTo)await continueTaste();else shop();}
+   }finally{input.value='';const confirm=form.querySelector('#form-confirm');if(confirm)confirm.value='';}
+  });
+ };
+ main.querySelector('#auth-switch').onclick=()=>{if(!busy)formAuth(!signup,form.querySelector('#form-email').value);};
+ main.querySelector('#auth-back').onclick=()=>{if(!busy){returnTo=null;shop();}};
+ focusMain();
 }
 async function loadSession(id){
  // 먼저 읽은 상태로 화면을 바꾸지 않고 답변과 revision의 원자적 스냅샷을 사용한다.
@@ -185,5 +240,23 @@ dialog.onclick=e=>{if(e.target===dialog)dialog.close();};
 function shop(){ history.replaceState(null,'',location.pathname); storefront(main,()=>{home();focusMain();}); focusMain(); }
 document.querySelector('#nav-shop').onclick=e=>{e.preventDefault();if(!busy)shop();};
 document.querySelector('#nav-taste').onclick=e=>{e.preventDefault();if(!busy){home();focusMain();}};
-if(new URLSearchParams(location.hash.slice(1)).get('session'))login();else if(location.hash==='#taste')home();else shop();
+// 같은 문서의 저장 링크로 이동해도 인증 확인과 세션 복원을 거친다.
+window.onhashchange=()=>{
+ if(!busy&&new URLSearchParams(location.hash.slice(1)).get('session'))login();
+};
+async function initialize(){
+ loading('FORM을 불러오고 있어요.');
+ try{
+  authMode=await client.init();
+  if(authMode==='member'){
+   try{member=await api('/auth/me');}catch(e){if(e.status!==401)throw e;}
+  }
+  updateMemberNav();
+  if(new URLSearchParams(location.hash.slice(1)).get('session'))login();else if(location.hash==='#taste')home();else shop();
+ }catch{
+  main.innerHTML='<section class="error-panel"><p>FORM에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.</p><button id="retry-init" class="secondary">다시 연결</button></section>';
+  main.querySelector('#retry-init').onclick=initialize;
+ }
+}
+initialize();
 

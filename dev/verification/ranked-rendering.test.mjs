@@ -7,10 +7,10 @@ import * as state from '../../src/main/resources/static/assessment-state.mjs';
 // 실제 app.js 렌더 함수를 격리된 DOM 대역에서 실행한다. 브라우저 레이아웃 검증은 아니다.
 function renderer() {
  const element={innerHTML:'',querySelector:()=>({}),querySelectorAll:()=>[],focus:()=>{}};
- const context=vm.createContext({...state,document:{querySelector:()=>element},location:{hash:'#taste'},
+ const context=vm.createContext({...state,createClient:()=>({}),document:{querySelector:()=>element},location:{hash:'#taste'},
    history:{replaceState(){}},URLSearchParams,window:{scrollTo(){}},setTimeout,clearTimeout});
  const source=readFileSync(new URL('../../src/main/resources/static/app.js',import.meta.url),'utf8');
- vm.runInContext(source.replace(/^import .*;\r?\n/gm,''),context);
+ vm.runInContext(source.replace(/^import .*;\r?\n/gm,'').replace(/initialize\(\);\s*$/, ''),context);
  return context;
 }
 test('rank badges, review, result and download preserve saved ranking',async()=>{

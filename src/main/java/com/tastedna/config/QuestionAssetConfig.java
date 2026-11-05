@@ -8,7 +8,7 @@ import java.nio.file.Path;
 
 // 원본 이미지를 복제하지 않고 로컬 질문 화면에서 제공한다.
 @Configuration
-@Profile("local")
+@Profile("local | member-auth")
 public class QuestionAssetConfig implements WebMvcConfigurer {
     @Override public void addResourceHandlers(ResourceHandlerRegistry registry) {
         String root = Path.of("gender").toAbsolutePath().normalize().toUri().toString();
