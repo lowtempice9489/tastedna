@@ -44,6 +44,45 @@ class DemoCatalogTest {
         return result;
     }
 
+    // V24의 명시적 상품 ID 매핑을 기존 카탈로그 대역에 적용한다.
+    static List<DemoProduct> scopedCatalog() throws Exception {
+        var catalog = catalog(true);
+        String sql = Files.readString(MIGRATIONS.resolve("V24__register_demo_product_apparel_scopes.sql"));
+        var updates = Pattern.compile("UPDATE td_demo_product SET apparel_scope = '(MENS|WOMENS|UNISEX)' WHERE product_id = '([^']+)' AND apparel_scope IS NULL;").matcher(sql);
+        var ids = new HashSet<String>();
+        while (updates.find()) {
+            assertTrue(ids.add(updates.group(2)));
+            String id = updates.group(2);
+            var product = catalog.stream().filter(p -> p.getProductId().equals(id)).findFirst().orElseThrow();
+            when(product.getApparelScope()).thenReturn(DemoProduct.ApparelScope.valueOf(updates.group(1)));
+        }
+        assertEquals(100, ids.size());
+        return catalog;
+    }
+
+    @Test void scopeRegistrationPreservesCatalogAndHasExactDefinitionProvenance() throws Exception {
+        var before = catalog(true);
+        var after = scopedCatalog();
+        assertEquals(100, after.size());
+        assertEquals(29, after.stream().filter(p -> p.getApparelScope() == DemoProduct.ApparelScope.MENS).count());
+        assertEquals(71, after.stream().filter(p -> p.getApparelScope() == DemoProduct.ApparelScope.WOMENS).count());
+        String mens = Files.readString(MIGRATIONS.resolve("V13__add_mens_image_simple_definition.sql"));
+        String womens = Files.readString(MIGRATIONS.resolve("V18__add_womens_simple_q05_q07.sql"))
+                + Files.readString(MIGRATIONS.resolve("V19__add_womens_simple_q08_q10.sql"));
+        for (int i = 0; i < before.size(); i++) {
+            var a = before.get(i); var b = after.get(i);
+            assertEquals(a.getProductId(), b.getProductId());
+            assertEquals(a.getName(), b.getName());
+            assertEquals(a.getCategory(), b.getCategory());
+            assertEquals(a.getPrice(), b.getPrice());
+            assertEquals(a.getImageUrl(), b.getImageUrl());
+            assertEquals(a.getStyleCodes(), b.getStyleCodes());
+            assertTrue(Files.isRegularFile(Path.of(b.getImageUrl().substring(8))));
+            assertTrue((b.getApparelScope() == DemoProduct.ApparelScope.MENS ? mens : womens).contains(b.getImageUrl()));
+            assertFalse((b.getApparelScope() == DemoProduct.ApparelScope.MENS ? womens : mens).contains(b.getImageUrl()));
+        }
+    }
+
     @Test void catalogHasThirtyUniqueProductsWithExistingImagesAndApprovedCodes() throws Exception {
         var products = catalog();
         assertEquals(30, products.size());

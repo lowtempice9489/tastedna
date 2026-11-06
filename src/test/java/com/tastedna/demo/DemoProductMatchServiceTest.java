@@ -17,6 +17,31 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DemoProductMatchServiceTest {
+    @Test void registeredCatalogMatchesOnlySessionScopeAndSelectedRawStyle() throws Exception {
+        var catalog = DemoCatalogTest.scopedCatalog();
+        when(products.findMatchingStyles(any())).thenReturn(catalog);
+        for (var scope : ApparelScope.values()) {
+            when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, scope, "SUBMITTED", 10, definition, null));
+            var reachable = new HashSet<String>();
+            for (var option : ImageDefinitionTest.questions().get("Q02").path("options")) {
+                String code = option.path("id").asString();
+                select(code, option.path("label").asString());
+                var expected = catalog.stream()
+                        .filter(p -> p.getApparelScope().name().equalsIgnoreCase(scope.name()))
+                        .filter(p -> p.getStyleCodes().contains(code))
+                        .map(DemoProduct::getProductId).sorted().toList();
+                var result = service.match("member", id);
+                assertEquals(expected, result.products().stream().map(DemoProductMatchService.Product::id).toList());
+                assertTrue(result.products().stream().allMatch(p -> p.evidence().stream()
+                        .allMatch(e -> e.questionId().equals("Q02") && e.optionId().equals(code) && e.styleCode().equals(code))));
+                assertEquals(result, service.match("member", id));
+                reachable.addAll(expected);
+            }
+            assertEquals(catalog.stream().filter(p -> p.getApparelScope().name().equalsIgnoreCase(scope.name()))
+                    .filter(p -> !p.getStyleCodes().isEmpty()).count(), reachable.size());
+            assertFalse(reachable.isEmpty());
+        }
+    }
     @Test void existingCatalogWithoutExplicitScopeCannotMatch() throws Exception {
         var catalog = DemoCatalogTest.catalog(true);
         assertEquals(100, catalog.size());
