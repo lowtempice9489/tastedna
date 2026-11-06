@@ -1,5 +1,12 @@
 package com.tastedna.scoring.application;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import tools.jackson.databind.node.ObjectNode;
+
 import com.tastedna.scoring.persistence.SimpleAttributeMappingRepository;
 import com.tastedna.scoring.persistence.SimpleCandidateProfileRepository;
 import com.tastedna.scoring.persistence.SimpleCandidateRelationRepository;
@@ -70,13 +77,13 @@ public class StyleCoreCandidateService {
         }
 
         Map<String, List<Map<String, String>>> selectionsByCandidate =
-                new java.util.LinkedHashMap<>();
+                new LinkedHashMap<>();
 
         for (var row : rows) {
             selectionsByCandidate
                     .computeIfAbsent(
                             row.getId().getCandidateId(),
-                            ignored -> new java.util.ArrayList<>()
+                            ignored -> new ArrayList<>()
                     )
                     .add(Map.of(
                             "questionId", row.getId().getQuestionId(),
@@ -105,11 +112,11 @@ public class StyleCoreCandidateService {
             String memberId, String sessionId, String definitionId,
             JsonNode approvedQuestion, JsonNode presentedQuestion) {
         var mapping = loadDirectMapping().deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) mapping).put("sourceDefinitionId", definitionId);
-        var labels = new java.util.HashMap<String, String>();
+        ((ObjectNode) mapping).put("sourceDefinitionId", definitionId);
+        var labels = new HashMap<String, String>();
         for (JsonNode option : approvedQuestion.path("options"))
             labels.put(option.path("id").asString(), option.path("label").asString());
-        var compatible = new java.util.HashSet<String>();
+        var compatible = new HashSet<String>();
         for (JsonNode option : presentedQuestion.path("options")) {
             String id = option.path("id").asString();
             if (labels.containsKey(id) && labels.get(id).equals(option.path("label").asString()))
@@ -172,13 +179,13 @@ public class StyleCoreCandidateService {
             );
         }
 
-        var relationsByCandidate = new java.util.LinkedHashMap<
+        var relationsByCandidate = new LinkedHashMap<
                 String, List<Map<String, String>>>();
 
         for (var relation : relations) {
             relationsByCandidate.computeIfAbsent(
                     relation.getId().getCandidateId(),
-                    ignored -> new java.util.ArrayList<>()
+                    ignored -> new ArrayList<>()
             ).add(Map.of(
                     "questionId", relation.getId().getQuestionId(),
                     "optionId", relation.getId().getOptionId(),
@@ -187,7 +194,7 @@ public class StyleCoreCandidateService {
             ));
         }
 
-        var candidateProfiles = new java.util.ArrayList<Map<String, Object>>();
+        var candidateProfiles = new ArrayList<Map<String, Object>>();
 
         for (var profile : profiles) {
             if (!"PROPOSED".equals(profile.getProfileStatus())) {
@@ -408,7 +415,7 @@ public class StyleCoreCandidateService {
 
     // 실제 Simple 세션에서 관측의 처리 상태를 분류한다.
     // 이미 해석한 속성과 아직 매핑 또는 시각 정보가 필요한 관측을 구별한다.
-    public java.util.Map<String, Set<String>>
+    public Map<String, Set<String>>
     classifySimpleEvidenceReadinessFromSession(
             String memberId,
             String sessionId
@@ -558,7 +565,7 @@ public class StyleCoreCandidateService {
         }
 
         Set<String> candidates = analysis.initialCandidates();
-        Set<String> blockers = new java.util.LinkedHashSet<>();
+        Set<String> blockers = new LinkedHashSet<>();
 
         if (candidates.isEmpty()) {
             return new SimpleResultDecision(
@@ -659,7 +666,7 @@ public class StyleCoreCandidateService {
         }
 
         Set<String> supportedCandidates =
-                new java.util.LinkedHashSet<>();
+                new LinkedHashSet<>();
 
         for (var support : supports) {
             if (support == null) {
@@ -693,7 +700,7 @@ public class StyleCoreCandidateService {
         // 여러 후보를 동시에 지지하는 경우다.
         // 대표 후보는 정하지 않지만 복수 직접 선호는 유지한다.
         Set<String> remainingBlockers =
-                new java.util.LinkedHashSet<>(baseline.blockers());
+                new LinkedHashSet<>(baseline.blockers());
 
         remainingBlockers.add("REPRESENTATIVE_SELECTION_PENDING");
 

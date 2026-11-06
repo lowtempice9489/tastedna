@@ -1,5 +1,7 @@
 package com.tastedna.scoring.api;
 
+import java.util.stream.Collectors;
+
 import com.tastedna.scoring.application.Q08ComparisonEvidenceService;
 import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.scoring.application.StyleCoreCandidateService;
@@ -107,7 +109,7 @@ public class SimpleResultController {
                 )
                 .stream()
                 .map(answer -> answer.getId().getQuestionId())
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
 
         Set<String> requiredQuestionIds = Set.of(
                 "Q01", "Q02", "Q03", "Q04", "Q05",
@@ -129,10 +131,10 @@ public class SimpleResultController {
         );
 
         Map<String, List<String>> directPreferences =
-                new java.util.LinkedHashMap<>();
+                new LinkedHashMap<>();
 
         Map<String, List<String>> directPreferenceOptionIds =
-                new java.util.LinkedHashMap<>();
+                new LinkedHashMap<>();
 
         Map<String, String> preferenceTypes = Map.of(
                 "colors", "DIRECT_COLOR_PREFERENCE",
@@ -195,7 +197,7 @@ public class SimpleResultController {
         // 일부 후보가 누락된 응답을 정상 RESULT로 반환하지 않는다.
         Set<String> resolvedIds = preferredStyles.stream()
                 .map(PreferredStyle::styleId)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
 
         if (!resolvedIds.equals(preferredIds)) {
             throw new ResponseStatusException(

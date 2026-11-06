@@ -1,5 +1,7 @@
 package com.tastedna.config;
 
+import org.springframework.security.web.csrf.CsrfException;
+
 import org.springframework.context.annotation.*;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
@@ -85,7 +87,7 @@ public class MemberSecurityConfig {
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler((req, res, ex) -> {
                             res.setStatus(403); res.setContentType("application/json;charset=UTF-8");
-                            String code = ex instanceof org.springframework.security.web.csrf.CsrfException
+                            String code = ex instanceof CsrfException
                                     ? "CSRF_INVALID" : "ACCESS_DENIED";
                             res.getWriter().write("{\"code\":\"" + code + "\",\"message\":\"요청이 허용되지 않습니다.\"}");
                         }))

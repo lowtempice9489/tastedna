@@ -1,5 +1,7 @@
 package com.tastedna.scoring.persistence;
 
+import java.util.Collection;
+
 import com.tastedna.scoring.domain.ResultCandidate;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -17,6 +19,6 @@ public interface ResultCandidateRepository
 
     // 여러 후보 ID에 해당하는 정의를 한 번에 조회한다.
     List<ResultCandidate> findByCandidateIdIn(
-            java.util.Collection<String> candidateIds
+            Collection<String> candidateIds
     );
 }

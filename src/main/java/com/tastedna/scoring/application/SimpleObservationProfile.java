@@ -1,5 +1,7 @@
 package com.tastedna.scoring.application;
 
+import java.util.stream.Collectors;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +45,7 @@ public record SimpleObservationProfile(
         return observationsByType.values().stream()
                 .flatMap(List::stream)
                 .map(RawObservationAggregator.RawObservation::questionId)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     // 특정 관측 유형의 원본 근거를 반환한다.

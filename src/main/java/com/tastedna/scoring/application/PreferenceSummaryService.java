@@ -1,5 +1,8 @@
 package com.tastedna.scoring.application;
 
+import com.tastedna.session.domain.TestSession;
+import java.util.stream.Collectors;
+
 import com.tastedna.session.persistence.*;
 import com.tastedna.session.api.dto.SessionResponse;
 import com.tastedna.session.application.TestSessionService;
@@ -63,7 +66,7 @@ public class PreferenceSummaryService {
         var stored = answers.findByIdSessionIdOrderByIdQuestionIdAsc(id.toString());
         Set<String> expected = new HashSet<>();
         for (int i = 1; i <= 10; i++) expected.add("Q%02d".formatted(i));
-        if (!stored.stream().map(a -> a.getId().getQuestionId()).collect(java.util.stream.Collectors.toSet()).equals(expected))
+        if (!stored.stream().map(a -> a.getId().getQuestionId()).collect(Collectors.toSet()).equals(expected))
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "SIMPLE_ANSWERS_INCOMPLETE");
         List<Evidence> evidence = new ArrayList<>();
         for (var answer : stored) {
@@ -103,13 +106,13 @@ public class PreferenceSummaryService {
         }
         String styles = evidence.stream().filter(e -> e.questionId().equals("Q02"))
                 .flatMap(e -> e.selections().stream()).map(Selection::label)
-                .collect(java.util.stream.Collectors.joining(" · "));
+                .collect(Collectors.joining(" · "));
         return new Summary(response, "DIRECT_PREFERENCE_SUMMARY",
                 styles.isBlank() ? "나의 취향 기록" : styles,
                 "직접 고른 스타일과 착장을 모았어요. 하나의 유형으로 단정하지 않고, 좋아하는 것과 피하고 싶은 것을 함께 보여드려요.",
                 false, List.copyOf(evidence));
     }
-    private com.tastedna.session.domain.TestSession lock(String member, UUID id) {
+    private TestSession lock(String member, UUID id) {
         return sessions.findByIdAndMemberIdForUpdate(id.toString(), member)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "SESSION_NOT_FOUND"));
     }

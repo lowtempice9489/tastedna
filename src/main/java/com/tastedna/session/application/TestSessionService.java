@@ -1,5 +1,8 @@
 package com.tastedna.session.application;
 
+import com.tastedna.session.application.multi.MultiChoiceOptionExtractor;
+import java.util.stream.Collectors;
+
 import com.tastedna.definition.api.dto.QuestionListResponse;
 import com.tastedna.definition.api.dto.QuestionResponse;
 import com.tastedna.definition.domain.QuestionDefinition;
@@ -167,7 +170,7 @@ public class TestSessionService {
                             || ComparisonAnswerValidator.activeComparisons(q, Map.of()).size() != (i == 7 ? 5 : 4))
                         throw new IllegalArgumentException();
                 } else {
-                    com.tastedna.session.application.multi.MultiChoiceOptionExtractor.extract(row.getQuestionPayload(), mapper);
+                    MultiChoiceOptionExtractor.extract(row.getQuestionPayload(), mapper);
                 }
             }
         } catch (RuntimeException invalidDefinition) {
@@ -559,7 +562,7 @@ public class TestSessionService {
                 )
                 .stream()
                 .map(answer -> answer.getId().getQuestionId())
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
 
         if (!answeredQuestionIds.containsAll(requiredQuestionIds)) {
             throw new ResponseStatusException(

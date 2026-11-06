@@ -1,5 +1,7 @@
 package com.tastedna.scoring.application;
 
+import java.util.Collections;
+
 import com.tastedna.scoring.domain.OptionScoringRule;
 import com.tastedna.scoring.persistence.OptionScoringRuleRepository;
 import lombok.RequiredArgsConstructor;
@@ -75,6 +77,6 @@ public class SelectedOptionRuleResolver {
 
         // 호출한 코드가 반환된 규칙 목록의 구성을 변경하지 못하도록 보호한다.
         // 선택지 입력 순서를 유지한 상태로 수정 불가능한 Map을 반환한다.
-        return java.util.Collections.unmodifiableMap(resolved);
+        return Collections.unmodifiableMap(resolved);
     }
 }

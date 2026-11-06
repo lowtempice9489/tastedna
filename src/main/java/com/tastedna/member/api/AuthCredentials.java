@@ -1,5 +1,7 @@
 package com.tastedna.member.api;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import jakarta.validation.constraints.*;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
@@ -11,7 +13,7 @@ public record AuthCredentials(
     public AuthCredentials {
         if (email != null) email = email.strip().toLowerCase(Locale.ROOT);
     }
-    @com.fasterxml.jackson.annotation.JsonIgnore
+    @JsonIgnore
     @AssertTrue
     public boolean isPasswordEncodingValid() {
         // BCrypt의 72바이트 한계를 초과하는 비밀번호를 조용히 잘라 저장하지 않는다.
