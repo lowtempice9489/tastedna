@@ -20,6 +20,15 @@ class DemoProductMatchServiceTest {
     @Test void expandedCatalogMatchesRegisteredStylesWithoutUsingImages() throws Exception {
         var catalog = DemoCatalogTest.catalog(true);
         when(products.findMatchingStyles(any())).thenReturn(catalog);
+        int[] expected = {10, 0, 12, 6, 16, 8, 7, 0, 11, 2, 1, 1};
+        var options = ImageDefinitionTest.questions().get("Q02").path("options");
+        for (var option : options) {
+            String code = option.path("id").asString();
+            select(code, option.path("label").asString());
+            var matched = service.match("member", id);
+            assertEquals(expected[Integer.parseInt(code.substring(1)) - 1], matched.products().size(), code);
+            assertEquals(matched, service.match("member", id));
+        }
         select("R12", "글램·화려함");
         var result = service.match("member", id);
         assertEquals(List.of("look-62"), result.products().stream().map(DemoProductMatchService.Product::id).toList());

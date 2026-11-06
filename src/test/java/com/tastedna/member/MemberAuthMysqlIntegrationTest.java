@@ -1,4 +1,9 @@
 package com.tastedna.member;
+import java.nio.file.Path;
+import java.nio.file.Files;
+import org.springframework.transaction.annotation.Transactional;
+import com.tastedna.demo.DemoProduct;
+import com.tastedna.demo.DemoProductRepository;
 
 import com.tastedna.member.domain.FormMember;
 import com.tastedna.member.persistence.FormMemberRepository;
@@ -43,6 +48,34 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(MemberAuthMysqlIntegrationTest.SafeMigration.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MemberAuthMysqlIntegrationTest {
+    @Autowired DemoProductRepository demoProducts;
+
+    // 기존 테스트 DB 사전 확인을 재사용하며 카탈로그를 읽기만 한다.
+    @Test
+    @Transactional
+    void demoCatalogV22HasExpectedStyleCoverage() {
+        assertEquals("22", flyway.info().current().getVersion().getVersion());
+        assertTrue(flyway.validateWithResult().validationSuccessful);
+        var catalog = demoProducts.findAllByOrderByDisplayOrderAsc();
+        assertEquals(100, catalog.size());
+        assertEquals(100, catalog.stream().map(DemoProduct::getProductId).distinct().count());
+        assertEquals(100, catalog.stream().map(DemoProduct::getImageUrl).distinct().count());
+        assertEquals(26, catalog.stream().filter(p -> p.getStyleCodes().isEmpty()).count());
+        var allowed = new HashSet<String>();
+        for (int i = 1; i <= 12; i++) allowed.add("R%02d".formatted(i));
+        for (var product : catalog) {
+            assertTrue(allowed.containsAll(product.getStyleCodes()));
+            assertTrue(product.getImageUrl().startsWith("/assets/gender/"));
+            assertTrue(Files.isRegularFile(Path.of(product.getImageUrl().substring(8))));
+        }
+        int[] expected = {10, 0, 12, 6, 16, 8, 7, 0, 11, 2, 1, 1};
+        for (int i = 0; i < expected.length; i++) {
+            String code = "R%02d".formatted(i + 1);
+            var matched = demoProducts.findMatchingStyles(Set.of(code));
+            assertEquals(expected[i], matched.size(), code);
+            assertTrue(matched.stream().allMatch(p -> p.getStyleCodes().contains(code)));
+        }
+    }
     private static final String TEST_URL = "jdbc:mysql://localhost:3306/tastedna_test?connectionTimeZone=UTC";
     private static final Map<String, Map<String, List<String>>> baseline = new LinkedHashMap<>();
     @Autowired MockMvc mvc;
