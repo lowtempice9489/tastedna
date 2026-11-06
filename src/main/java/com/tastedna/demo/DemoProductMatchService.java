@@ -3,7 +3,7 @@ package com.tastedna.demo;
 import com.tastedna.scoring.application.SessionObservationService;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.application.multi.MultiChoiceAnswerPayloadExtractor;
-import com.tastedna.session.application.single.SingleChoiceAnswerPayloadExtractor;
+
 import com.tastedna.session.domain.SessionAnswerId;
 import com.tastedna.session.persistence.SessionAnswerRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
 
-// 직접 선택한 이미지의 동일성만 확인한다. RESULT 및 스타일 추론과 독립적이다.
+// Q02 직접 관측과 상품에 등록된 스타일만 대조하며 RESULT나 이미지로 스타일을 추론하지 않는다.
 @Service
 @RequiredArgsConstructor
 public class DemoProductMatchService {
@@ -24,7 +24,7 @@ public class DemoProductMatchService {
     private final DemoProductRepository products;
     private final JsonMapper mapper;
 
-    public record Evidence(String questionId, String optionId, String observationType, long answerRevision) {}
+    public record Evidence(String questionId, String optionId, String observationType, long answerRevision, String styleCode, String styleLabel) {}
     public record Product(String id, String name, String imageUrl, int price, boolean demo, List<Evidence> evidence) {}
     public record Response(UUID sessionId, UUID definitionId, long revision, String matchType, List<Product> products) {}
 
@@ -35,41 +35,39 @@ public class DemoProductMatchService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "SESSION_NOT_SUBMITTED");
         if (!"SIMPLE".equals(session.mode().name()))
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "SIMPLE_SESSION_REQUIRED");
-        var answer = answers.findById(new SessionAnswerId(id.toString(), "Q06"))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Q06_ANSWER_REQUIRED"));
+        var answer = answers.findById(new SessionAnswerId(id.toString(), "Q02"))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Q02_ANSWER_REQUIRED"));
         var question = mapper.readTree(answer.getPresentedPayload());
-        var payload = mapper.readTree(answer.getAnswerPayload());
-        List<String> selected = switch (question.path("kind").asString()) {
-            case "SINGLE_CHOICE" -> List.of(SingleChoiceAnswerPayloadExtractor.extract(payload));
-            case "MULTIPLE_CHOICE" -> MultiChoiceAnswerPayloadExtractor.extract(payload);
-            default -> List.of();
-        };
-        Set<String> positive = new HashSet<>();
+        var selected = MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(answer.getAnswerPayload()));
+        Map<String, String> labels = new HashMap<>();
+        for (var option : question.path("options"))
+            labels.put(option.path("id").asString(), option.path("label").asString());
+        Map<String, Evidence> evidence = new TreeMap<>();
         for (var observation : observations.collectRaw(member, id.toString())
-                .getOrDefault("DIRECT_CLOTHING_PREFERENCE", List.of())) {
-            if (session.definitionId().toString().equals(observation.definitionId())
-                    && "Q06".equals(observation.questionId())
-                    && "DIRECT_CLOTHING_PREFERENCE".equals(observation.type())
+                .getOrDefault("DIRECT_FASHION_LOOK_PREFERENCE", List.of())) {
+            String code = observation.optionId();
+            String label = STYLES.get(code);
+            if (label != null && label.equals(labels.get(code)) && label.equals(observation.observedValue())
+                    && session.definitionId().toString().equals(observation.definitionId())
+                    && "Q02".equals(observation.questionId())
+                    && "DIRECT_FASHION_LOOK_PREFERENCE".equals(observation.type())
                     && "EXPLICIT_SELECTION".equals(observation.evidence())
-                    && answer.getAnswerRevision() == observation.answerRevision()
-                    && selected.contains(observation.optionId())) positive.add(observation.optionId());
+                    && answer.getAnswerRevision() == observation.answerRevision() && selected.contains(code))
+                evidence.put(code, new Evidence("Q02", code, observation.type(), observation.answerRevision(), code, label));
         }
-        Map<String, List<Evidence>> byImage = new TreeMap<>();
-        for (var option : question.path("options")) {
-            String optionId = option.path("id").asString();
-            if (!positive.contains(optionId)) continue;
-            for (var image : option.path("images")) {
-                if (image.isString() && !image.stringValue().isBlank())
-                    byImage.computeIfAbsent(image.stringValue(), ignored -> new ArrayList<>())
-                            .add(new Evidence("Q06", optionId, "DIRECT_CLOTHING_PREFERENCE", answer.getAnswerRevision()));
-            }
-        }
-        List<Product> matched = byImage.isEmpty() ? List.of() : products.findByImageUrlInOrderByProductIdAsc(byImage.keySet()).stream()
-                // MySQL collation이 대소문자를 무시해도 실제 경로는 정확히 일치해야 한다.
-                .filter(p -> byImage.containsKey(p.getImageUrl()))
+        List<Product> matched = evidence.isEmpty() ? List.of() : products.findMatchingStyles(evidence.keySet()).stream()
                 .sorted(Comparator.comparing(DemoProduct::getProductId))
                 .map(p -> new Product(p.getProductId(), p.getName(), p.getImageUrl(), p.getPrice(), true,
-                        byImage.get(p.getImageUrl()).stream().distinct().sorted(Comparator.comparing(Evidence::optionId)).toList())).toList();
-        return new Response(id, session.definitionId(), session.revision(), "EXACT_SELECTED_IMAGE", matched);
+                        evidence.entrySet().stream().filter(e -> p.getStyleCodes().contains(e.getKey()))
+                                .map(Map.Entry::getValue).toList()))
+                .filter(p -> !p.evidence().isEmpty()).toList();
+        return new Response(id, session.definitionId(), session.revision(), "EXPLICIT_STYLE_ATTRIBUTE", matched);
     }
+
+    // V13 Q02의 승인된 코드·표시명이다. 유사 이름이나 RESULT 후보 판정으로 확장하지 않는다.
+    private static final Map<String, String> STYLES = Map.ofEntries(
+            Map.entry("R01", "미니멀"), Map.entry("R02", "모던"), Map.entry("R03", "클래식"),
+            Map.entry("R04", "프레피"), Map.entry("R05", "캐주얼"), Map.entry("R06", "스포티"),
+            Map.entry("R07", "스트릿"), Map.entry("R08", "빈티지·레트로"), Map.entry("R09", "로맨틱"),
+            Map.entry("R10", "보헤미안"), Map.entry("R11", "에지·그런지"), Map.entry("R12", "글램·화려함"));
 }

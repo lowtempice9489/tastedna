@@ -25,68 +25,76 @@ class DemoProductMatchServiceTest {
     final DemoProductMatchService service = new DemoProductMatchService(sessions, answers, observations, products, mapper);
     final UUID id = UUID.randomUUID();
     final UUID definition = UUID.fromString("33333333-3333-4333-8333-333333333333");
-    final List<DemoProduct> catalog = new ArrayList<>();
     @BeforeEach void setup() throws Exception {
         when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, ApparelScope.mens, "SUBMITTED", 10, definition, null));
-        var pattern = java.util.regex.Pattern.compile("VALUES \\('([^']+)','([^']+)','[^']+',(\\d+),'([^']+)'");
-        var matcher = pattern.matcher(Files.readString(Path.of("src/main/resources/db/migration/V15__create_demo_store_catalog.sql")));
-        while (matcher.find()) {
-            var p = mock(DemoProduct.class);
-            when(p.getProductId()).thenReturn(matcher.group(1));
-            when(p.getName()).thenReturn(matcher.group(2));
-            when(p.getPrice()).thenReturn(Integer.parseInt(matcher.group(3)));
-            when(p.getImageUrl()).thenReturn(matcher.group(4));
-            catalog.add(p);
-        }
-        assertEquals(7, catalog.size());
-        when(products.findByImageUrlInOrderByProductIdAsc(any())).thenReturn(catalog);
-        select("A", "DIRECT_CLOTHING_PREFERENCE");
+        select("R01", "미니멀");
     }
-    void select(String option, String type) throws Exception {
-        var q = ImageDefinitionTest.questions().get("Q06");
-        when(answers.findById(new SessionAnswerId(id.toString(), "Q06"))).thenReturn(Optional.of(new SessionAnswer(
-                id.toString(), "Q06", mapper.writeValueAsString(Map.of("selectedOptionId", option)), q.toString(), 6, LocalDateTime.now())));
-        when(observations.collectRaw("member", id.toString())).thenReturn(Map.of(type, List.of(
-                new RawObservationAggregator.RawObservation(definition.toString(), type, "의류 " + option,
-                        "EXPLICIT_SELECTION", "Q06", option, 6))));
+    void select(String code, String label) throws Exception {
+        var q = ImageDefinitionTest.questions().get("Q02");
+        when(answers.findById(new SessionAnswerId(id.toString(), "Q02"))).thenReturn(Optional.of(new SessionAnswer(
+                id.toString(), "Q02", mapper.writeValueAsString(Map.of("selectedOptionIds", List.of(code))), q.toString(), 2, LocalDateTime.now())));
+        when(observations.collectRaw("member", id.toString())).thenReturn(Map.of("DIRECT_FASHION_LOOK_PREFERENCE", List.of(
+                raw(code, label, definition.toString(), 2))));
     }
-    @Test void allSevenRealQ06ImagesMatchOnlyTheirV15Product() throws Exception {
-        var sql = Files.readString(Path.of("src/main/resources/db/migration/V13__add_mens_image_simple_definition.sql"));
-        for (int i = 0; i < 7; i++) {
-            String option = String.valueOf((char) ('A' + i));
-            assertTrue(sql.contains("'Q06','" + option + "','{}','{\"type\":\"DIRECT_CLOTHING_PREFERENCE\""));
-            select(option, "DIRECT_CLOTHING_PREFERENCE");
+    RawObservationAggregator.RawObservation raw(String code, String label, String definitionId, long revision) {
+        return new RawObservationAggregator.RawObservation(definitionId, "DIRECT_FASHION_LOOK_PREFERENCE", label,
+                "EXPLICIT_SELECTION", "Q02", code, revision);
+    }
+    DemoProduct product(Set<String> codes) {
+        var p = mock(DemoProduct.class);
+        when(p.getProductId()).thenReturn("test-product");
+        when(p.getName()).thenReturn("테스트 상품");
+        when(p.getImageUrl()).thenReturn("/unrelated-product-image.png");
+        when(p.getPrice()).thenReturn(10000);
+        when(p.getStyleCodes()).thenReturn(codes);
+        return p;
+    }
+    @Test void approvedVocabularyMatchesDifferentImagesAndIsReproducible() throws Exception {
+        var q = ImageDefinitionTest.questions().get("Q02");
+        int count = 0;
+        for (var option : q.path("options")) {
+            String code = option.path("id").asString(), label = option.path("label").asString();
+            select(code, label);
+            var registered = product(Set.of(code));
+            when(products.findMatchingStyles(Set.of(code))).thenReturn(List.of(registered));
             var result = service.match("member", id);
             assertEquals(result, service.match("member", id));
-            assertEquals(1, result.products().size());
+            assertEquals("EXPLICIT_STYLE_ATTRIBUTE", result.matchType());
             var p = result.products().getFirst();
-            assertEquals(catalog.get(i).getProductId(), p.id());
-            assertEquals(catalog.get(i).getName(), p.name());
-            assertEquals(catalog.get(i).getPrice(), p.price());
-            assertEquals(catalog.get(i).getImageUrl(), p.imageUrl());
+            assertEquals("/unrelated-product-image.png", p.imageUrl());
+            assertEquals(10000, p.price());
             assertTrue(p.demo());
-            assertEquals("Q06", p.evidence().getFirst().questionId());
-            assertEquals(option, p.evidence().getFirst().optionId());
+            assertEquals(List.of(new DemoProductMatchService.Evidence("Q02", code,
+                    "DIRECT_FASHION_LOOK_PREFERENCE", 2, code, label)), p.evidence());
+            count++;
         }
+        assertEquals(12, count);
     }
-    @Test void noProductOrOnlyCaseInsensitiveDatabaseMatchReturnsEmpty() {
-        when(products.findByImageUrlInOrderByProductIdAsc(any())).thenReturn(List.of());
+    @Test void missingOrDifferentTagsCannotMatchEvenIfRepositoryReturnsThem() {
+        var unmatched = List.of(product(Set.of()), product(Set.of("R02")), product(Set.of("r01")));
+        when(products.findMatchingStyles(any())).thenReturn(unmatched);
         assertTrue(service.match("member", id).products().isEmpty());
-        var p = catalog.getFirst();
-        String upperCaseImage = p.getImageUrl().toUpperCase(Locale.ROOT);
-        when(p.getImageUrl()).thenReturn(upperCaseImage);
-        when(products.findByImageUrlInOrderByProductIdAsc(any())).thenReturn(List.of(p));
+        when(products.findMatchingStyles(any())).thenReturn(List.of());
         assertTrue(service.match("member", id).products().isEmpty());
     }
-    @Test void avoidanceOrUnselectedObservationCannotMatch() throws Exception {
-        select("A", "DIRECT_OUTFIT_AVOIDANCE");
-        assertTrue(service.match("member", id).products().isEmpty());
-        select("A", "DIRECT_CLOTHING_PREFERENCE");
-        when(observations.collectRaw("member", id.toString())).thenReturn(Map.of("DIRECT_CLOTHING_PREFERENCE", List.of(
-                new RawObservationAggregator.RawObservation(definition.toString(), "DIRECT_CLOTHING_PREFERENCE", "의류 B",
-                        "EXPLICIT_SELECTION", "Q06", "B", 6))));
+    @Test void evidenceMustMatchSelectionDefinitionRevisionAndExactLabel() throws Exception {
+        for (var raw : List.of(raw("R02", "모던", definition.toString(), 2),
+                raw("R01", "미니멀", UUID.randomUUID().toString(), 2),
+                raw("R01", "미니멀", definition.toString(), 1),
+                raw("R01", "미니멀룩", definition.toString(), 2))) {
+            when(observations.collectRaw("member", id.toString())).thenReturn(Map.of("DIRECT_FASHION_LOOK_PREFERENCE", List.of(raw)));
+            assertTrue(service.match("member", id).products().isEmpty());
+        }
+        when(observations.collectRaw("member", id.toString())).thenReturn(Map.of());
         assertTrue(service.match("member", id).products().isEmpty());
         verifyNoInteractions(products);
+    }
+    @Test void duplicateObservationsDoNotDuplicateEvidence() {
+        var raw = raw("R01", "미니멀", definition.toString(), 2);
+        when(observations.collectRaw("member", id.toString())).thenReturn(Map.of("DIRECT_FASHION_LOOK_PREFERENCE", List.of(raw, raw)));
+        var registered = product(Set.of("R01", "R02"));
+        when(products.findMatchingStyles(any())).thenReturn(List.of(registered));
+        assertEquals(1, service.match("member", id).products().getFirst().evidence().size());
     }
     @Test void submissionModeAndOwnerAreCheckedBeforeAnswers() {
         when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, ApparelScope.mens, "IN_PROGRESS", 0, definition, null));
