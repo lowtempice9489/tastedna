@@ -9,7 +9,7 @@ function screen(questionScreen=false){
  const nodes=new Map();
  function node(key){
   if(!nodes.has(key))nodes.set(key,{value:'',textContent:'',disabled:false,focus(){},
-   addEventListener(event,handler){this['on'+event]=handler;},
+   append(){},addEventListener(event,handler){this['on'+event]=handler;},
    querySelector:node,querySelectorAll:()=>[],close(){this.open=false;},
    set innerHTML(html){this.html=html;for(const match of html.matchAll(/id="([^"]+)"[^>]*?(?:value="([^"]*)")?[^>]*>/g)){
     const element=node('#'+match[1]);element.value=(match[0].match(/value="([^"]*)"/)||[])[1]||'';

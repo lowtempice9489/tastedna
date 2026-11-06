@@ -6,7 +6,7 @@ import * as state from '../../src/main/resources/static/assessment-state.mjs';
 
 // 실제 app.js 렌더 함수를 격리된 DOM 대역에서 실행한다. 브라우저 레이아웃 검증은 아니다.
 function renderer() {
- const element={innerHTML:'',querySelector:()=>({}),querySelectorAll:()=>[],focus:()=>{}};
+ const element={innerHTML:'',querySelector:()=>({append(){}}),querySelectorAll:()=>[],focus:()=>{}};
  const context=vm.createContext({...state,createClient:()=>({}),document:{querySelector:()=>element},location:{hash:'#taste'},
    history:{replaceState(){}},URLSearchParams,window:{scrollTo(){}},setTimeout,clearTimeout});
  const source=readFileSync(new URL('../../src/main/resources/static/app.js',import.meta.url),'utf8');
@@ -151,4 +151,31 @@ test('unsubmitted report cannot render or request matched products',async()=>{
  await assert.rejects(vm.runInContext('result()',context),/SESSION_NOT_SUBMITTED/);
  assert.equal(vm.runInContext('calls.length',context),1);
  assert.doesNotMatch(vm.runInContext('main.innerHTML',context),/matched-products|FORM 전시 상품/);
+});
+
+test('mens and womens report keeps products near summary, four at a time, and details collapsed',async()=>{
+ for(const apparelScope of ['mens','womens']){
+  const context=renderer(),sections=[],more={};
+  context.document.createElement=()=>{const e={setAttribute(){},querySelector:()=>more};sections.push(e);return e;};
+  context.data={title:'미니멀',description:'직접 선택 요약',session:{status:'SUBMITTED',definitionId:'def',revision:10,apparelScope},evidence:[
+   {questionId:'Q02',prompt:'스타일',selections:[{optionId:'R01',label:'미니멀',images:[]}]},
+   {questionId:'Q09',comparisonId:'C02',prompt:'순위',selections:[{label:'B',rank:1,images:['/assets/gender/female/Q09/B.png']},{label:'A',rank:2,images:[]}],notPreferred:[{label:'C'}]}
+  ]};
+  context.matched={products:Array.from({length:9},(_,i)=>({id:'p'+i,name:'상품 '+i,imageUrl:'/assets/gender/female/Q06/product-'+i+'.png',price:59000,evidence:[{questionId:'Q02',optionId:'R01',styleCode:'R01',styleLabel:'미니멀'}]}))};
+  vm.runInContext("main.append=()=>{};session={sessionId:'saved'};api=async path=>path.endsWith('/preference-summary')?data:matched",context);
+  await vm.runInContext('result()',context);
+  const html=vm.runInContext('main.innerHTML',context);
+  assert.match(html,new RegExp((apparelScope==='mens'?'남성복':'여성복')+' · Simple'));
+  assert.ok(html.indexOf('id="report-products"')<html.indexOf('id="direct-preferences"'));
+  assert.match(html,/<details class="report-history"><summary>내 상세 선택 기록/);
+  assert.doesNotMatch(html,/<details[^>]*class="report-history"[^>]*\bopen/);
+  assert.ok(html.indexOf('1위 · B')<html.indexOf('2위 · A'));
+  assert.match(html,/이 비교에서 선호하지 않은 항목: C/);
+  assert.match(html,/src="\/assets\/gender\/female\/Q09\/B.png"/);
+  const products=sections.find(e=>e.className==='matched-products');
+  const count=()=> (products.innerHTML.match(/class="matched-product-card"/g)||[]).length;
+  assert.equal(count(),4);assert.match(products.innerHTML,/Q02 · R01 · 미니멀 \(R01\)/);
+  more.onclick();assert.equal(count(),8);
+  more.onclick();assert.equal(count(),9);assert.doesNotMatch(products.innerHTML,/id="more-products"/);
+ }
 });
