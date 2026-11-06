@@ -31,6 +31,11 @@ public class DemoProduct {
     @CollectionTable(name = "td_demo_product_style", joinColumns = @JoinColumn(name = "product_id"))
     @Column(name = "style_code", nullable = false, length = 3)
     private Set<String> styleCodes = new HashSet<>();
+    // 상품명에 명시된 색상만 Q01 코드로 등록한다. 미등록은 빈 집합이며 추천 조건에는 사용하지 않는다.
+    @ElementCollection
+    @CollectionTable(name = "td_demo_product_color", joinColumns = @JoinColumn(name = "product_id"))
+    @Column(name = "color_code", nullable = false, length = 1)
+    private Set<String> colorCodes = new HashSet<>();
     @Column(nullable = false)
     private int price;
     @Column(name = "image_url", nullable = false, length = 500)
