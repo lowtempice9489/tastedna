@@ -63,13 +63,15 @@ class WomensSharedDefinitionMysqlTest {
     @Autowired Flyway flyway;
 
     @Test void migratedDefinitionIsInactiveAndSharedQuestionsAndRulesMatchMens() {
-        assertEquals("18", flyway.info().current().getVersion().getVersion());
+        assertEquals("19", flyway.info().current().getVersion().getVersion());
         var definition = definitions.findById(WOMENS).orElseThrow();
         assertFalse(definition.isActive());
         assertEquals(10, definition.getQuestionCount());
         assertEquals("SIMPLE-WOMENS-IMAGE-V1", definition.getVersionCode());
         var rows = questions.findByIdDefinitionIdOrderByDisplayOrderAsc(WOMENS);
-        assertEquals(7, rows.size());
+        assertEquals(10, rows.size());
+        assertEquals(java.util.stream.IntStream.rangeClosed(1,10).mapToObj(i -> "Q%02d".formatted(i)).toList(),
+                rows.stream().map(q -> q.getId().getQuestionId()).toList());
         for (var row : rows.subList(0, 4)) {
             String qid = row.getId().getQuestionId();
             var male = questions.findByIdDefinitionIdAndIdQuestionId(MENS, qid).orElseThrow();
@@ -107,5 +109,14 @@ class WomensSharedDefinitionMysqlTest {
                 assertEquals(mapper.readTree("{}"), mapper.readTree(rule.getScoringPayload()));
             }
         }
+    }
+
+    @Test void finalQuestionsMatchV19WhileStartRemainsBlocked() throws Exception {
+        for (var entry : WomensFinalDefinitionTest.questions().entrySet()) {
+            var row = questions.findByIdDefinitionIdAndIdQuestionId(WOMENS, entry.getKey()).orElseThrow();
+            assertEquals(entry.getValue(), mapper.readTree(row.getQuestionPayload()));
+            assertTrue(row.isRequired());
+        }
+        assertFalse(definitions.findById(WOMENS).orElseThrow().isActive());
     }
 }
