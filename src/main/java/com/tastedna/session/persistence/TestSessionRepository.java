@@ -29,6 +29,15 @@ public interface TestSessionRepository
             List<String> statuses
     );
 
+    // 인증된 회원의 저장 기록만 읽고, 제출 또는 시작 시각이 최신인 순서로 제공한다.
+    @Query("""
+            select s from TestSession s, TestDefinition d
+            where s.definitionId = d.definitionId and d.testMode = 'SIMPLE'
+              and s.mallMemberId = :memberId and s.status in ('IN_PROGRESS', 'SUBMITTED')
+            order by coalesce(s.submittedAt, s.startedAt) desc, s.sessionId desc
+            """)
+    List<TestSession> findSimpleHistory(@Param("memberId") String memberId);
+
     // 답변 저장·세션 재개 중 동일 세션에 대한 동시 변경을 제어하기 위해 DB 행 잠금을 사용한다.
     // 세션 ID와 회원 ID를 함께 검사하며, 트랜잭션 종료 시 잠금이 해제된다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)

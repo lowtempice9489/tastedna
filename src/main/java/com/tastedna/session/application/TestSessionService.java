@@ -46,6 +46,15 @@ public class TestSessionService {
     private final SessionAnswerRepository answerRepository;
     private final JsonMapper mapper;
 
+    @Transactional(readOnly = true)
+    public List<SessionHistoryResponse> history(String memberId) {
+        return sessionRepository.findSimpleHistory(memberId).stream().map(s ->
+                new SessionHistoryResponse(UUID.fromString(s.getSessionId()), Mode.SIMPLE,
+                        ApparelScope.valueOf(s.getApparelScope().toLowerCase(Locale.ROOT)), s.getStatus(),
+                        s.getStartedAt().toInstant(ZoneOffset.UTC),
+                        s.getSubmittedAt() == null ? null : s.getSubmittedAt().toInstant(ZoneOffset.UTC))).toList();
+    }
+
     // 진행 중인 세션의 중복 생성만 차단한다.
     // 제출된 세션은 보존하며 새 테스트 시작을 허용한다.
     @Transactional

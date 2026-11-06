@@ -13,6 +13,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
+import java.util.List;
+import com.tastedna.session.api.dto.SessionHistoryResponse;
 
 // 테스트 세션 생성·조회·재개, 답변 저장, 질문 조회 API를 제공한다.
 // 인증된 회원 정보를 서비스에 전달하며, 실제 세션 처리와 검증은 TestSessionService가 담당한다.
@@ -24,6 +26,11 @@ public class TestSessionController {
 
     public TestSessionController(TestSessionService service) {
         this.service = service;
+    }
+
+    @GetMapping("/history")
+    public List<SessionHistoryResponse> history(Authentication authentication) {
+        return service.history(authentication.getName());
     }
 
     // POST /api/v1/sessions — 인증된 회원의 새 테스트 세션을 생성한다.

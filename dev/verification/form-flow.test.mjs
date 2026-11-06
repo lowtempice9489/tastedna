@@ -205,14 +205,17 @@ test('mypage requires FORM login and returns without creating a test',async()=>{
  node('#form-email').value='a@example.test';node('#form-password').value='test';
  node('form').onsubmit({preventDefault(){}});await settle();
  assert.match(node('main').innerHTML,/현재 조회 가능한 Simple 기록이 없습니다/);
- assert.deepEqual(calls.map(c=>c[0]),['/auth/login','/sessions/active']);
+ assert.deepEqual(calls.map(c=>c[0]),['/auth/login','/sessions/history']);
 });
 test('mypage only shows server-verified records and routes resume and submitted results',async()=>{
  const {run,node,calls,client}=screen();
- client.request=async(path,body)=>{calls.push([path,body]);return path==='/sessions/active'?{sessionId:'active',mode:'SIMPLE',apparelScope:'mens',status:'IN_PROGRESS'}:{sessionId:'saved',mode:'SIMPLE',apparelScope:'mens',status:'SUBMITTED'};};
+ client.request=async(path,body)=>{calls.push([path,body]);return path==='/sessions/history'?[{sessionId:'active',mode:'SIMPLE',apparelScope:'mens',status:'IN_PROGRESS',startedAt:'2026-01-02T00:00:00Z'},{sessionId:'saved',mode:'SIMPLE',apparelScope:'womens',status:'SUBMITTED',submittedAt:'2026-01-01T00:00:00Z'}]:{evidence:[{questionId:'Q02',selections:[{label:'미니멀'}]}]};};
  run("member={email:'a@example.test'};session={sessionId:'saved'};loadSession=async id=>{globalThis.loaded=id;};");
  await run('openMyPage()');
  assert.match(node('main').innerHTML,/진행 중/);assert.match(node('main').innerHTML,/제출 완료/);
+ assert.match(node('main').innerHTML,/미니멀/);assert.match(node('main').innerHTML,/여성복 Simple/);
+ run('session=null');await run('openMyPage()');assert.match(node('main').innerHTML,/최근 완료한 취향 기록/);
+ node('#mypage-latest').onclick();await settle();assert.equal(run('loaded'),'saved');
  assert.match(node('main').innerHTML,/리빙 · 준비 중/);assert.doesNotMatch(node('main').innerHTML,/포인트|주문|일치율/);
  node('#mypage-record-0').onclick();await settle();assert.equal(run('loaded'),'active');
  assert.ok(calls.some(c=>c[0]==='/sessions/active/resume'&&c[1]));
@@ -224,11 +227,33 @@ test('mypage only shows server-verified records and routes resume and submitted 
 test('mypage hides inaccessible recent record and clears screen on expired login',async()=>{
  for(const status of [404,401]){
   const {run,node,client}=screen();
-  client.request=async path=>{if(path==='/sessions/active')return null;throw Object.assign(new Error('SESSION_NOT_FOUND'),{status});};
+  client.request=async path=>{throw Object.assign(new Error('SESSION_NOT_FOUND'),{status});};
   run("member={email:'a@example.test'};session={sessionId:'private-record'}");
   await run('openMyPage()');
   assert.doesNotMatch(node('main').innerHTML,/기록 private-record/);
   if(status===401){assert.equal(run('member'),null);assert.match(node('main').innerHTML,/FORM 로그인/);}
-  else assert.match(node('main').innerHTML,/현재 조회 가능한 Simple 기록이 없습니다/);
+  else assert.doesNotMatch(node('main').innerHTML,/저장된 테스트 기록/);
  }
+});
+
+test('saved history opens the actual report and matching API after in-memory state is cleared',async()=>{
+ const {run,node,calls,client}=screen();
+ const saved={sessionId:'persisted',mode:'SIMPLE',apparelScope:'womens',status:'SUBMITTED',definitionId:'def',revision:10,submittedAt:'2026-01-01T00:00:00Z'};
+ client.request=async(path,body)=>{
+  calls.push([path,body]);
+  if(path==='/sessions/history')return [saved];
+  if(path.endsWith('/answers'))return {session:saved,answers:{}};
+  if(path.endsWith('/questions'))return {questions:[]};
+  if(path.endsWith('/preference-summary'))return {session:saved,title:'직접 선택 리포트',description:'',evidence:[]};
+  if(path.endsWith('/matched-demo-products'))return {products:[]};
+  throw new Error(path);
+ };
+ run("member={email:'a@example.test'};session=null");
+ await run('openMyPage()');
+ node('#report-products').scrollIntoView=()=>{node('#report-products').scrolled=true;};
+ node('#mypage-products').onclick();await settle();
+ assert.match(node('main').innerHTML,/직접 선택 리포트/);
+ assert.ok(calls.some(([p])=>p==='/sessions/persisted/matched-demo-products'));
+ assert.equal(node('#report-products').scrolled,true);
+ assert.ok(!calls.some(([p])=>p.endsWith('/resume')));
 });

@@ -21,6 +21,9 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import com.tastedna.session.api.TestSessionController;
+import org.springframework.security.core.Authentication;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,6 +36,36 @@ import static org.mockito.Mockito.*;
 // Repository와 JsonMapper를 Mock으로 대체하므로 실제 DB 동작은 검증하지 않는다.
 @ExtendWith(MockitoExtension.class)
 class TestSessionServiceTest {
+
+    @Test
+    void historyUsesAuthenticatedMemberAndPreservesStoredTimes() {
+        var now = LocalDateTime.of(2026, 1, 2, 3, 4);
+        var pending = new TestSession(UUID.randomUUID().toString(), "owner", UUID.randomUUID().toString(),
+                "MENS", "[]", now, now.plusMinutes(2));
+        var submitted = new TestSession(UUID.randomUUID().toString(), "owner", UUID.randomUUID().toString(),
+                "WOMENS", "[]", now.minusDays(1), now.plusMinutes(2));
+        submitted.submit(now.plusHours(1));
+        when(sessionRepository.findSimpleHistory("owner")).thenReturn(List.of(submitted, pending));
+        var result = service.history("owner");
+        assertEquals(List.of("SUBMITTED", "IN_PROGRESS"), result.stream().map(SessionHistoryResponse::status).toList());
+        assertEquals(ApparelScope.womens, result.getFirst().apparelScope());
+        assertEquals(now.plusHours(1).toInstant(ZoneOffset.UTC), result.getFirst().submittedAt());
+        assertNull(result.getLast().submittedAt());
+        assertEquals(now.toInstant(ZoneOffset.UTC), result.getLast().startedAt());
+        when(sessionRepository.findSimpleHistory("other")).thenReturn(List.of());
+        assertTrue(service.history("other").isEmpty());
+        verify(sessionRepository).findSimpleHistory("other");
+        verifyNoInteractions(answerRepository, definitionRepository);
+    }
+
+    @Test
+    void historyControllerUsesPrincipalWithoutClientMemberId() {
+        var principal = mock(Authentication.class);
+        when(principal.getName()).thenReturn("signed-in-member");
+        when(sessionRepository.findSimpleHistory("signed-in-member")).thenReturn(List.of());
+        assertTrue(new TestSessionController(service).history(principal).isEmpty());
+        verify(sessionRepository).findSimpleHistory("signed-in-member");
+    }
 
     @Mock
     private TestDefinitionRepository definitionRepository;
