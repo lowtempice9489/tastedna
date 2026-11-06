@@ -56,6 +56,9 @@ public class DemoProductMatchService {
                 evidence.put(code, new Evidence("Q02", code, observation.type(), observation.answerRevision(), code, label));
         }
         List<Product> matched = evidence.isEmpty() ? List.of() : products.findMatchingStyles(evidence.keySet()).stream()
+                .filter(p -> session.apparelScope() != null && p.getApparelScope() != null
+                        && (p.getApparelScope() == DemoProduct.ApparelScope.UNISEX
+                        || p.getApparelScope().name().equals(session.apparelScope().name().toUpperCase(Locale.ROOT))))
                 .sorted(Comparator.comparing(DemoProduct::getProductId))
                 .map(p -> new Product(p.getProductId(), p.getName(), p.getImageUrl(), p.getPrice(), true,
                         evidence.entrySet().stream().filter(e -> p.getStyleCodes().contains(e.getKey()))

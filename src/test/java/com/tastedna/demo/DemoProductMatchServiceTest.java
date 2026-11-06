@@ -17,34 +17,38 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DemoProductMatchServiceTest {
-    @Test void expandedCatalogMatchesRegisteredStylesWithoutUsingImages() throws Exception {
+    @Test void existingCatalogWithoutExplicitScopeCannotMatch() throws Exception {
         var catalog = DemoCatalogTest.catalog(true);
+        assertEquals(100, catalog.size());
+        assertTrue(catalog.stream().allMatch(p -> p.getApparelScope() == null));
         when(products.findMatchingStyles(any())).thenReturn(catalog);
-        int[] expected = {10, 0, 12, 6, 16, 8, 7, 0, 11, 2, 1, 1};
-        var options = ImageDefinitionTest.questions().get("Q02").path("options");
-        for (var option : options) {
-            String code = option.path("id").asString();
-            select(code, option.path("label").asString());
-            var matched = service.match("member", id);
-            assertEquals(expected[Integer.parseInt(code.substring(1)) - 1], matched.products().size(), code);
-            assertEquals(matched, service.match("member", id));
+        for (var scope : ApparelScope.values()) {
+            when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, scope, "SUBMITTED", 10, definition, null));
+            for (var option : ImageDefinitionTest.questions().get("Q02").path("options")) {
+                select(option.path("id").asString(), option.path("label").asString());
+                assertTrue(service.match("member", id).products().isEmpty());
+            }
         }
-        select("R12", "글램·화려함");
-        var result = service.match("member", id);
-        assertEquals(List.of("look-62"), result.products().stream().map(DemoProductMatchService.Product::id).toList());
-        assertEquals(result, service.match("member", id));
-        select("R01", "미니멀");
-        assertEquals(10, service.match("member", id).products().size());
-        select("R08", "빈티지·레트로");
-        assertTrue(service.match("member", id).products().isEmpty());
     }
-    @Test void migrationCatalogMatchesOnlyExplicitStyles() throws Exception {
-        var catalog = DemoCatalogTest.catalog();
-        when(products.findMatchingStyles(any())).thenReturn(catalog);
-        select("R01", "미니멀");
-        assertEquals(List.of("look-01", "look-16", "look-21", "look-26"),
-                service.match("member", id).products().stream().map(DemoProductMatchService.Product::id).toList());
-        select("R12", "글램·화려함");
+    @Test void apparelScopeAllowsOnlyMatchingOrUnisexProductsWithMatchingStyle() {
+        var mens = product(Set.of("R01"));
+        var womens = product(Set.of("R01"));
+        var unisex = product(Set.of("R01"));
+        var unknown = product(Set.of("R01"));
+        var wrongStyle = product(Set.of("R02"));
+        when(mens.getProductId()).thenReturn("mens");
+        when(womens.getProductId()).thenReturn("womens");
+        when(unisex.getProductId()).thenReturn("unisex");
+        when(womens.getApparelScope()).thenReturn(DemoProduct.ApparelScope.WOMENS);
+        when(unisex.getApparelScope()).thenReturn(DemoProduct.ApparelScope.UNISEX);
+        when(unknown.getApparelScope()).thenReturn(null);
+        when(wrongStyle.getApparelScope()).thenReturn(DemoProduct.ApparelScope.UNISEX);
+        when(products.findMatchingStyles(any())).thenReturn(List.of(mens, womens, unisex, unknown, wrongStyle));
+        assertEquals(List.of("mens", "unisex"), service.match("member", id).products().stream().map(DemoProductMatchService.Product::id).toList());
+        when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, ApparelScope.womens, "SUBMITTED", 10, definition, null));
+        assertEquals(List.of("unisex", "womens"), service.match("member", id).products().stream().map(DemoProductMatchService.Product::id).toList());
+        assertEquals(service.match("member", id), service.match("member", id));
+        when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, null, "SUBMITTED", 10, definition, null));
         assertTrue(service.match("member", id).products().isEmpty());
     }
     final TestSessionService sessions = mock(TestSessionService.class);
@@ -76,6 +80,7 @@ class DemoProductMatchServiceTest {
         when(p.getName()).thenReturn("테스트 상품");
         when(p.getImageUrl()).thenReturn("/unrelated-product-image.png");
         when(p.getPrice()).thenReturn(10000);
+        when(p.getApparelScope()).thenReturn(DemoProduct.ApparelScope.MENS);
         when(p.getStyleCodes()).thenReturn(codes);
         return p;
     }

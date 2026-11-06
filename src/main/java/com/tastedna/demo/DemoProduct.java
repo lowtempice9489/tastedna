@@ -13,6 +13,13 @@ import java.util.Set;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DemoProduct {
+    public enum ApparelScope { MENS, WOMENS, UNISEX }
+
+    // 이미지 경로나 상품명으로 추론하지 않는다. 미등록 상품은 매칭에서 제외한다.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "apparel_scope", length = 10)
+    private ApparelScope apparelScope;
+
     @Id @Column(name = "product_id", length = 40)
     private String productId;
     @Column(nullable = false, length = 120)
