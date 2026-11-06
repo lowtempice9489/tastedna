@@ -2,9 +2,10 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import * as state from '../../src/main/resources/static/assessment-state.mjs';
 
 // 실제 화면 핸들러를 DOM 대역에서 실행한다. 브라우저 배치·실제 쿠키 검증과 구분한다.
-function screen(){
+function screen(questionScreen=false){
  const nodes=new Map();
  function node(key){
   if(!nodes.has(key))nodes.set(key,{value:'',textContent:'',disabled:false,focus(){},
@@ -17,7 +18,7 @@ function screen(){
  }
  const calls=[];
  const client={clear(){calls.push(['clear']);},async request(path,body){calls.push([path,body]);return {memberId:'form-a',email:'a@example.test'};}};
- const context=vm.createContext({createClient:()=>client,document:{querySelector:selector=>['#next','#back'].includes(selector)?null:node(selector),querySelectorAll:()=>[]},
+ const context=vm.createContext({...state,createClient:()=>client,document:{querySelector:selector=>['#next','#back'].includes(selector)&&(!questionScreen||!node('main').innerHTML.includes('id="'+selector.slice(1)+'"'))?null:node(selector),querySelectorAll:()=>[],createElement:()=>({setAttribute(){},querySelector:()=>({})})},
   storefront(){},location:{hash:'#taste',pathname:'/'},history:{replaceState(){}},URLSearchParams,TextEncoder,
   window:{scrollTo(){}},setTimeout:()=>0,clearTimeout(){}});
  const source=readFileSync(new URL('../../src/main/resources/static/app.js',import.meta.url),'utf8');
@@ -26,6 +27,75 @@ function screen(){
  return {context,node,calls,client,run:code=>vm.runInContext(code,context)};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('female selection survives FORM login and reports server definition rejection',async()=>{
+ const {run,node,calls,client}=screen();
+ run("selectApparel();");node('#choose-womens').onclick();node('#choose-simple').onclick();
+ assert.match(node('main').innerHTML,/FORM 로그인/);
+ client.request=async(path,body)=>{calls.push([path,body]);if(path==='/auth/login')return {memberId:'form-a',email:'a@example.test'};if(path==='/sessions/active')return null;throw new Error('IMAGE_DEFINITION_NOT_READY');};
+ node('#form-email').value='a@example.test';node('#form-password').value='test password';
+ node('form').onsubmit({preventDefault(){}});await settle();
+ assert.ok(calls.some(([p])=>p==='/sessions/simple-image?apparelScope=womens'));
+ assert.match(node('#notice').textContent,/정의가 아직 준비되지 않았어요/);
+});
+
+test('female server definitions render, restore, save, revise and submit through shared flow',async()=>{
+ const {run,node,context,calls,client}=screen(true);
+ const definitions=[];
+ for(const file of ['V13__add_mens_image_simple_definition.sql','V18__add_womens_simple_q05_q07.sql','V19__add_womens_simple_q08_q10.sql']){
+  const sql=readFileSync(new URL('../../src/main/resources/db/migration/'+file,import.meta.url),'utf8');
+  for(const line of sql.split(/\r?\n/))if(line.startsWith('INSERT INTO td_question_definition')){
+   const id=line.match(/,'(Q\d+)',/)[1];if(file.startsWith('V13')&&id>'Q04')continue;
+   definitions.push({questionId:id,questionPayload:JSON.parse(line.slice(line.indexOf(",'{")+2,line.lastIndexOf("','{}',TRUE)")))});
+  }
+ }
+ assert.equal(definitions.length,10);
+ let session={sessionId:'female',apparelScope:'womens',mode:'SIMPLE',status:'IN_PROGRESS',revision:0};
+ const saved={};node('main').append=()=>{};
+ client.request=async(path,body)=>{
+  calls.push([path,body]);
+  if(path.endsWith('/answers')&&body){saved[body.questionId]=JSON.parse(JSON.stringify(body.answerPayload));session={...session,revision:session.revision+1};return session;}
+  if(path.endsWith('/answers'))return {session,answers:JSON.parse(JSON.stringify(saved))};
+  if(path.endsWith('/questions'))return {questions:definitions};
+  if(path.endsWith('/submit')){session={...session,status:'SUBMITTED'};return session;}
+  if(path.endsWith('/preference-summary'))return {title:'실제 서버 직접 선호',description:'',session,evidence:[]};
+  if(path.endsWith('/matched-demo-products'))return {products:[]};
+  throw new Error(path);
+ };
+ await run("loadSession('female')");
+ for(let i=0;i<10;i++){
+  const q=definitions[i],p=q.questionPayload;
+  const html=node('main').innerHTML;
+  assert.ok(html.includes(p.prompt));assert.match(html,/SIMPLE · 여성복/);
+  if(p.kind==='COMPARISON'){
+   assert.match(html,/비교 참고 이미지/);
+   for(const g of p.comparisons){
+    context.groupId=g.id;context.option=g.selectionMode==='RANKED_MULTI_SELECT'?'B':'A';
+    run("answers[questions[step].questionId]=choose(questions[step].questionPayload,answers[questions[step].questionId],option,groupId)");
+    if(g.selectionMode==='RANKED_MULTI_SELECT'){
+     run("answers[questions[step].questionId]=choose(questions[step].questionPayload,answers[questions[step].questionId],'A',groupId)");
+     run("answers[questions[step].questionId]=choose(questions[step].questionPayload,answers[questions[step].questionId],'B',groupId)");
+     run("answers[questions[step].questionId]=choose(questions[step].questionPayload,answers[questions[step].questionId],'B',groupId)");
+     assert.equal(run("selectionMap(answers[questions[step].questionId])[groupId].join(',')"),'A,B');
+    }
+   }
+  }else{
+   run("answers[questions[step].questionId]=choose(questions[step].questionPayload,null,questions[step].questionPayload.options[0].id)");
+   if(['Q05','Q06','Q07'].includes(q.questionId)){
+    run("answers[questions[step].questionId]=choose(questions[step].questionPayload,answers[questions[step].questionId],'NONE')");
+    assert.equal(run("answers[questions[step].questionId].selectedOptionIds.join(',')"),'NONE');
+   }
+  }
+  run('render()');node('#next').onclick();await settle();
+ }
+ assert.equal(Object.keys(saved).length,10);
+ await run("loadSession('female')");assert.match(node('main').innerHTML,/마음이 간 선택들/);
+ run('step=7;render()');assert.match(node('main').innerHTML,/1위/);node('#next').onclick();await settle();
+ run('step=10;review()');node('#submit').onclick();await settle();
+ assert.match(node('main').innerHTML,/실제 서버 직접 선호/);
+ assert.equal(session.status,'SUBMITTED');
+ assert.equal(calls.filter(([p,b])=>p.endsWith('/answers')&&b).length,11);
+});
 test('Deep remains non-interactive and mode back returns to wardrobe',()=>{
  const {run,node,calls}=screen();
  run('selectApparel();');node('#choose-mens').onclick();
@@ -48,16 +118,15 @@ test('authenticated Simple choice preserves active session resume and existing n
   assert.deepEqual(calls.map(c=>c[0]),active?['/sessions/active']:['/sessions/active','/sessions/simple-image']);
  }
 });
-test('womens card only shows preparation notice and returns to wardrobe selection',()=>{
+test('womens card opens shared Simple mode and returns to wardrobe selection',()=>{
  const {run,node,calls}=screen();
  run('selectApparel();');
  assert.match(node('main').innerHTML,/wardrobe-grid/);
  assert.match(node('main').innerHTML,/wardrobe-name">남성복/);
- assert.match(node('main').innerHTML,/wardrobe-pending">준비 중/);
+ assert.match(node('main').innerHTML,/여성복 취향 알아보기/);
  node('#choose-womens').onclick();
- assert.match(node('main').innerHTML,/여성복 취향 테스트를/);
- assert.match(node('main').innerHTML,/준비하고 있어요/);
- node('#scope-back').onclick();
+ assert.match(node('main').innerHTML,/10문항 · 여성복/);
+ node('#mode-back').onclick();
  assert.match(node('main').innerHTML,/id="wardrobe-title"/);
  node('#scope-back').onclick();
  assert.match(node('main').innerHTML,/id="category-title"/);
@@ -67,11 +136,11 @@ test('atelier cover retains wardrobe selection and FORM login entry without star
  const {run,node,calls}=screen();
  run('home();');
  assert.match(node('main').innerHTML,/id="taste-guide"/);
- assert.match(node('main').innerHTML,/남성복 Simple 10문항/);
+ assert.match(node('main').innerHTML,/남성복·여성복 Simple 10문항/);
  node('#begin').onclick();
  assert.match(node('main').innerHTML,/어떤 취향을 탐색해볼까요/);
  node('#category-apparel').onclick();
- assert.match(node('main').innerHTML,/여성복 · 준비 중 안내/);
+ assert.match(node('main').innerHTML,/여성복 취향 알아보기/);
  node('#choose-mens').onclick();
  assert.match(node('main').innerHTML,/id="mode-title"/);
  assert.equal(calls.length,0);

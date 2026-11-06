@@ -4,6 +4,7 @@ import {activeGroups, selectionMap, choose, valid, isRanked} from './assessment-
 
 const main=document.querySelector('main'), notice=document.querySelector('#notice'), dialog=document.querySelector('#zoom');
 const client=createClient();
+let selectedScope='mens';
 let authMode, member=null, returnTo=null, session=null, questions=[], answers={}, step=0, busy=false, toastTimer;
 const titles=['COLOR','STYLE','SILHOUETTE','PATTERN','FIRST IMPRESSION','YOUR WARDROBE','NOT FOR ME','THE DETAILS','STYLING','FINAL LOOK'];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -16,6 +17,7 @@ async function api(path, body){
  return client.request(path,body);
 }
 const errors={
+ IMAGE_DEFINITION_NOT_READY:'선택한 의류 테스트 정의가 아직 준비되지 않았어요. 다른 의류 범위를 선택하거나 나중에 다시 시도해주세요.',
  INVALID_CREDENTIALS:'이메일 또는 비밀번호를 확인해주세요.',
  EMAIL_ALREADY_REGISTERED:'이미 가입된 이메일입니다. FORM 로그인으로 이동해주세요.',
  VALIDATION_FAILED:'이메일 형식과 비밀번호 조건을 확인해주세요.',
@@ -53,7 +55,7 @@ function home(){
  history.replaceState(null,'','#taste');
  main.innerHTML=`<div class="atelier">
  <section class="atelier-hero" aria-labelledby="atelier-title">
-  <div class="atelier-copy"><p class="atelier-kicker">FORM의 특별한 취향 기록 <span aria-hidden="true">/</span> YOUR PERSONAL ATELIER</p><h1 id="atelier-title">TasteDNA</h1><h2>검색보다 먼저,<br><em>나의 취향</em>을 발견하는 시간.</h2><p class="atelier-description">설명하기 어려웠던 내가 좋아하는 것들.<br>작은 선택을 모아, 나만의 취향을 기록해보세요.</p><div class="atelier-actions"><button class="primary" id="begin">테스트 시작하기 <span aria-hidden="true">↗</span></button><a class="secondary" href="#taste-guide">이용 과정 보기 ↓</a></div><p class="atelier-availability">지금은 남성복 Simple 10문항으로 시작할 수 있어요.</p></div>
+  <div class="atelier-copy"><p class="atelier-kicker">FORM의 특별한 취향 기록 <span aria-hidden="true">/</span> YOUR PERSONAL ATELIER</p><h1 id="atelier-title">TasteDNA</h1><h2>검색보다 먼저,<br><em>나의 취향</em>을 발견하는 시간.</h2><p class="atelier-description">설명하기 어려웠던 내가 좋아하는 것들.<br>작은 선택을 모아, 나만의 취향을 기록해보세요.</p><div class="atelier-actions"><button class="primary" id="begin">테스트 시작하기 <span aria-hidden="true">↗</span></button><a class="secondary" href="#taste-guide">이용 과정 보기 ↓</a></div><p class="atelier-availability">남성복·여성복 Simple 10문항을 선택할 수 있어요.</p></div>
   <div class="atelier-art" aria-hidden="true"><div class="atelier-orbit orbit-one"></div><div class="atelier-orbit orbit-two"></div><span class="art-word word-style">Style</span><span class="art-word word-mood">Mood</span><span class="art-word word-taste">Taste</span><div class="material-card"><div class="material-weave"></div><div class="material-caption"><span>THE TEXTURE OF YOU</span><b>Every shade.<br>Every little detail.</b></div></div><div class="palette-card"><span>PERSONAL NOTES / 01</span><div class="palette-swatches"><i></i><i></i><i></i><i></i></div><em>A little more you.</em></div><span class="art-index">AN EXPLORATION OF PERSONAL TASTE</span></div>
  </section>
  <div class="atelier-philosophy"><p>취향은 한 가지 모습으로<br>정의되지 않으니까.</p><div><span>색감</span><span>질감</span><span>분위기</span><span>스타일</span></div><small>마음이 가는 선택을 있는 그대로 기록해요.</small></div>
@@ -80,7 +82,7 @@ function selectCategory(){
  <article class="category-card category-pending" aria-disabled="true"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M14 30V18q0-6 6-6h24q6 0 6 6v12M12 27q-7 0-7 7v15h54V34q0-7-7-7t-7 7v5H19v-5q0-7-7-7ZM13 49v7m38-7v7"/></svg><h2 class="category-name">리빙</h2><p class="category-detail">머물고 싶은 공간의 분위기</p><span class="category-state">준비 중</span></article>
  <article class="category-card category-pending" aria-disabled="true"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M25 23V12h14v11M32 12V6h14M23 23h18l6 12v21H17V35ZM18 38h28"/></svg><h2 class="category-name">뷰티</h2><p class="category-detail">나를 표현하는 색과 감각</p><span class="category-state">준비 중</span></article>
  <article class="category-card category-pending" aria-disabled="true"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M10 17h34v17a17 17 0 0 1-34 0ZM44 19h6a9 9 0 0 1 0 18h-6M6 55h46"/></svg><h2 class="category-name">라이프</h2><p class="category-detail">일상을 채우는 작은 취향</p><span class="category-state">준비 중</span></article>
- </div><p class="category-note">현재 의류의 남성복 Simple 테스트를 이용할 수 있어요.<br>리빙·뷰티·라이프는 준비 중입니다.</p><button type="button" class="secondary" id="category-back">← TasteDNA 소개로</button>
+ </div><p class="category-note">의류의 남성복·여성복 Simple 테스트를 선택할 수 있어요.<br>리빙·뷰티·라이프는 준비 중입니다.</p><button type="button" class="secondary" id="category-back">← TasteDNA 소개로</button>
  </section>`;
  document.querySelector('#category-apparel').onclick=selectApparel;
  document.querySelector('#category-back').onclick=()=>{home();focusMain();};
@@ -91,26 +93,22 @@ function selectApparel(){
  main.innerHTML=`<section class="wardrobe-screen" aria-labelledby="wardrobe-title"><p class="eyebrow">TASTEDNA / CHOOSE YOUR WARDROBE</p><h1 id="wardrobe-title">어떤 옷의 취향을<br>알아볼까요?</h1><p class="wardrobe-description">살펴보고 싶은 의류를 선택해주세요.</p>
  <div class="wardrobe-grid">
  <button type="button" class="wardrobe-card wardrobe-mens" id="choose-mens"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 19-18 9-6 51 17 3 4-28v34h36V54l4 28 17-3-6-51-18-9-15 9Z"/><path d="m35 19 15 9-12 19-8-20m35-8L50 28l12 19 8-20M50 28v60M35 62h9m12 0h9"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">MENSWEAR</span><span class="wardrobe-name">남성복</span><span class="wardrobe-detail">마음이 가는 색과 스타일,<br>나의 의류 취향을 발견해보세요.</span><span class="wardrobe-cta">취향 알아보기 ↗</span></span></button>
- <button type="button" class="wardrobe-card wardrobe-womens" id="choose-womens" aria-label="여성복 · 준비 중 안내"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 18-16 9-8 34 15 4 9-23-3 43h36l-3-43 9 23 15-4-8-34-16-9-15 8Z"/><path d="m35 18 15 8-10 13-10-18m35-3L50 26l10 13 10-18M50 26v59M33 68h34"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">WOMENSWEAR</span><span class="wardrobe-name">여성복</span><span class="wardrobe-detail">여성복의 다양한 취향을 담을<br>질문과 선택지를 준비하고 있어요.</span><span class="wardrobe-pending">준비 중</span><span class="wardrobe-hint">준비 안내 보기</span></span></button>
+ <button type="button" class="wardrobe-card wardrobe-womens" id="choose-womens" aria-label="여성복 취향 알아보기"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 18-16 9-8 34 15 4 9-23-3 43h36l-3-43 9 23 15-4-8-34-16-9-15 8Z"/><path d="m35 18 15 8-10 13-10-18m35-3L50 26l10 13 10-18M50 26v59M33 68h34"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">WOMENSWEAR</span><span class="wardrobe-name">여성복</span><span class="wardrobe-detail">마음이 가는 색과 스타일,<br>나의 의류 취향을 발견해보세요.</span><span class="wardrobe-cta">취향 알아보기 ↗</span></span></button>
  </div><p class="wardrobe-note">현재 남성복 테스트를 이용할 수 있어요.</p><button type="button" class="secondary" id="scope-back">← 카테고리로</button></section>`;
- document.querySelector('#choose-mens').onclick=selectTestMode;
- document.querySelector('#choose-womens').onclick=womenComingSoon;
+ document.querySelector('#choose-mens').onclick=()=>selectTestMode('mens');
+ document.querySelector('#choose-womens').onclick=()=>selectTestMode('womens');
  document.querySelector('#scope-back').textContent='← 카테고리로';
  document.querySelector('#scope-back').onclick=selectCategory;
  focusMain();
 }
-function womenComingSoon(){
- main.innerHTML='<section class="login"><p class="eyebrow">WOMENS · COMING SOON</p><h1>여성복 취향 테스트를<br>준비하고 있어요.</h1><p class="muted">여성복에 맞는 질문과 더 다양한 이미지 선택지를 정리하고 있어요. 준비가 끝나면 여기서 시작할 수 있어요.</p><button class="primary" id="scope-back">← 남성 · 여성 다시 선택</button></section>';
- document.querySelector('#scope-back').onclick=selectApparel;
- focusMain();
-}
-function selectTestMode(){
+function selectTestMode(scope='mens'){
+ selectedScope=scope;
  history.replaceState(null,'','#taste');
  // Deep은 비대화형 카드로 두어 공통 버튼 활성화 처리에서도 시작할 수 없게 한다.
  main.innerHTML=`<section class="wardrobe-screen mode-screen" aria-labelledby="mode-title">
- <p class="eyebrow">TASTEDNA / MENSWEAR</p><h1 id="mode-title">어떤 방식으로<br>취향을 알아볼까요?</h1><p class="wardrobe-description">지금은 Simple로 나의 취향 기록을 시작할 수 있어요.</p>
+ <p class="eyebrow">TASTEDNA / ${selectedScope==='womens'?'WOMENSWEAR':'MENSWEAR'}</p><h1 id="mode-title">어떤 방식으로<br>취향을 알아볼까요?</h1><p class="wardrobe-description">지금은 Simple로 나의 취향 기록을 시작할 수 있어요.</p>
  <div class="wardrobe-grid">
- <button type="button" class="mode-card mode-simple" id="choose-simple"><span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle cx="32" cy="36" r="22"/><path d="M32 14V5m-7 0h14M32 22v15l9 5M48 17l5-5"/></svg></span><span class="mode-name">Simple</span><span class="mode-tag">10문항 · 남성복</span><span class="mode-description">색과 스타일, 마음이 가는 착장을 고르고<br>직접 선택한 선호를 기록해보세요.</span><span class="mode-action">Simple 시작하기 <span aria-hidden="true">↗</span></span></button>
+ <button type="button" class="mode-card mode-simple" id="choose-simple"><span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle cx="32" cy="36" r="22"/><path d="M32 14V5m-7 0h14M32 22v15l9 5M48 17l5-5"/></svg></span><span class="mode-name">Simple</span><span class="mode-tag">10문항 · ${selectedScope==='womens'?'여성복':'남성복'}</span><span class="mode-description">색과 스타일, 마음이 가는 착장을 고르고<br>직접 선택한 선호를 기록해보세요.</span><span class="mode-action">Simple 시작하기 <span aria-hidden="true">↗</span></span></button>
  <article class="mode-card mode-deep" aria-disabled="true" aria-labelledby="deep-title"><span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle cx="27" cy="27" r="18"/><path d="m40 40 15 15M20 19q8-6 14 2"/></svg></span><h2 class="mode-name" id="deep-title">Deep</h2><span class="mode-tag">준비 중</span><p class="mode-description">더 깊이 취향을 탐색할 수 있도록<br>질문과 경험을 준비하고 있어요.</p><span class="mode-unavailable">아직 시작할 수 없어요</span></article>
  </div><p class="wardrobe-note">진행 중인 Simple 기록이 있다면 이어서 답할 수 있어요.</p><button type="button" class="secondary" id="mode-back">← 의류 선택으로</button>
  </section>`;
@@ -124,7 +122,7 @@ function login(){
   if(member)action(continueTaste);else formAuth();return;
  }
  if(authMode!=='local')return;
- main.innerHTML='<form class="login"><p class="eyebrow">YOUR PERSONAL STUDY</p><h2>취향의 기록을<br>시작해볼까요?</h2><p class="muted">계정으로 연결하면 저장된 질문부터 이어갈 수 있어요.</p><label for="member">개발용 회원 ID</label><input id="member" autocomplete="username" value="dev-image-demo" required><label for="password">개발용 비밀번호</label><input id="password" type="password" autocomplete="current-password" required><button class="primary">연결하고 시작하기 →</button><small>현재는 로컬 체험 버전입니다. 서버에 설정한 개발용 계정으로 연결하세요. 여성복 문항은 준비 중입니다.</small></form>';
+ main.innerHTML='<form class="login"><p class="eyebrow">YOUR PERSONAL STUDY</p><h2>취향의 기록을<br>시작해볼까요?</h2><p class="muted">계정으로 연결하면 저장된 질문부터 이어갈 수 있어요.</p><label for="member">개발용 회원 ID</label><input id="member" autocomplete="username" value="dev-image-demo" required><label for="password">개발용 비밀번호</label><input id="password" type="password" autocomplete="current-password" required><button class="primary">연결하고 시작하기 →</button><small>현재는 로컬 체험 버전입니다. 서버에 설정한 개발용 계정으로 연결하세요.</small></form>';
  document.querySelector('form').onsubmit=e=>{e.preventDefault();const member=document.querySelector('#member').value.trim(),password=document.querySelector('#password').value;
  client.setBasic('Basic '+btoa(Array.from(new TextEncoder().encode(member+':'+password),b=>String.fromCharCode(b)).join('')));
  document.querySelector('#password').value='';
@@ -133,7 +131,7 @@ function login(){
   if(id){await loadSession(id);return;}
   const active=await api('/sessions/active');
   if(active){await loadSession(active.sessionId);return;}
-  session=await api('/sessions/simple-image',{});
+  session=await api('/sessions/simple-image'+(selectedScope==='womens'?'?apparelScope=womens':''),{});
   await loadSession(session.sessionId);
  });
  };focusMain();
@@ -173,7 +171,7 @@ async function myPage(){
    if(recent.mode==='SIMPLE'&&['IN_PROGRESS','SUBMITTED'].includes(recent.status))records.push(recent);
   }catch(e){if(![403,404].includes(e.status))throw e;}
  }
- main.innerHTML='<section class="form-mypage"><header class="mypage-heading"><p class="eyebrow">FORM / MY PAGE</p><h1>마이페이지</h1><p>'+esc(member.email)+'</p></header><div class="mypage-body"><aside><p class="eyebrow">FORM MEMBERSHIP</p><p>내 TasteDNA</p><button class="secondary" id="mypage-shop">FORM 컬렉션으로</button></aside><div><section class="mypage-intro"><p class="eyebrow">YOUR PERSONAL NOTES</p><h2>내 TasteDNA</h2><p>마음이 가는 선택에서 발견한 나의 취향.<br>이어서 답하거나 직접 고른 선호를 돌아보세요.</p></section><div class="mypage-categories"><span>의류 · 남성복 Simple</span><span>리빙 · 준비 중</span><span>뷰티 · 준비 중</span><span>라이프 · 준비 중</span></div><section class="mypage-records"><h2>확인 가능한 취향 기록</h2><p class="muted">진행 중인 Simple과 이 화면에서 열었던 기록만 표시해요. 전체 이력은 제공하지 않으며, 열었던 기록은 새로고침하면 목록에서 사라질 수 있어요.</p>'+records.map((r,i)=>'<article class="mypage-record"><div><p class="eyebrow">'+(r.status==='SUBMITTED'?'제출 완료':'진행 중')+'</p><h3>'+esc(r.apparelScope==='mens'?'남성복':r.apparelScope==='womens'?'여성복':'의류')+' Simple</h3><p class="muted">기록 '+esc(r.sessionId)+'</p></div><button class="primary" id="mypage-record-'+i+'">'+(r.status==='SUBMITTED'?'직접 선호 결과 보기':'이어서 답하기')+' →</button></article>').join('')+(!records.length?'<p class="mypage-empty">현재 조회 가능한 Simple 기록이 없습니다.</p>':'')+'</section><button class="secondary" id="mypage-start">TasteDNA 알아보기 →</button></div></div></section>';
+ main.innerHTML='<section class="form-mypage"><header class="mypage-heading"><p class="eyebrow">FORM / MY PAGE</p><h1>마이페이지</h1><p>'+esc(member.email)+'</p></header><div class="mypage-body"><aside><p class="eyebrow">FORM MEMBERSHIP</p><p>내 TasteDNA</p><button class="secondary" id="mypage-shop">FORM 컬렉션으로</button></aside><div><section class="mypage-intro"><p class="eyebrow">YOUR PERSONAL NOTES</p><h2>내 TasteDNA</h2><p>마음이 가는 선택에서 발견한 나의 취향.<br>이어서 답하거나 직접 고른 선호를 돌아보세요.</p></section><div class="mypage-categories"><span>의류 · 남성복·여성복 Simple</span><span>리빙 · 준비 중</span><span>뷰티 · 준비 중</span><span>라이프 · 준비 중</span></div><section class="mypage-records"><h2>확인 가능한 취향 기록</h2><p class="muted">진행 중인 Simple과 이 화면에서 열었던 기록만 표시해요. 전체 이력은 제공하지 않으며, 열었던 기록은 새로고침하면 목록에서 사라질 수 있어요.</p>'+records.map((r,i)=>'<article class="mypage-record"><div><p class="eyebrow">'+(r.status==='SUBMITTED'?'제출 완료':'진행 중')+'</p><h3>'+esc(r.apparelScope==='mens'?'남성복':r.apparelScope==='womens'?'여성복':'의류')+' Simple</h3><p class="muted">기록 '+esc(r.sessionId)+'</p></div><button class="primary" id="mypage-record-'+i+'">'+(r.status==='SUBMITTED'?'직접 선호 결과 보기':'이어서 답하기')+' →</button></article>').join('')+(!records.length?'<p class="mypage-empty">현재 조회 가능한 Simple 기록이 없습니다.</p>':'')+'</section><button class="secondary" id="mypage-start">TasteDNA 알아보기 →</button></div></div></section>';
  records.forEach((r,i)=>document.querySelector('#mypage-record-'+i).onclick=()=>action(async()=>{
   returnTo=r.sessionId;
   if(r.status==='IN_PROGRESS')await api('/sessions/'+encodeURIComponent(r.sessionId)+'/resume',{});
@@ -189,7 +187,7 @@ async function continueTaste(){
  if(target&&target!=='taste'){await loadSession(target);return;}
  const active=await api('/sessions/active');
  if(active){await loadSession(active.sessionId);return;}
- session=await api('/sessions/simple-image',{});await loadSession(session.sessionId);
+ session=await api('/sessions/simple-image'+(selectedScope==='womens'?'?apparelScope=womens':''),{});await loadSession(session.sessionId);
 }
 function formAuth(signup=false,email=''){
  main.innerHTML='<form class="login form-auth"><p class="eyebrow">FORM / MEMBERSHIP</p><h1>'+ (signup?'FORM 회원가입':'FORM 로그인')+'</h1><p class="muted">'+(returnTo?'FORM 회원으로 로그인하고 TasteDNA 취향 기록을 이어가세요.':'나의 스타일을 발견하는 곳, FORM에 오신 것을 환영합니다.')+'</p><label for="form-email">이메일</label><input id="form-email" name="email" type="email" autocomplete="username" maxlength="254" value="'+esc(email)+'" required><label for="form-password">비밀번호</label><input id="form-password" name="password" type="password" autocomplete="'+(signup?'new-password':'current-password')+'" '+(signup?'minlength="12" maxlength="72"':'')+' required>'+(signup?'<small id="password-help">12자 이상, UTF-8 기준 72바이트 이하로 입력해주세요.</small><label for="form-confirm">비밀번호 확인</label><input id="form-confirm" type="password" autocomplete="new-password" required>':'')+'<button class="primary" type="submit">'+(signup?'FORM 회원가입':'로그인')+'</button><button class="secondary" type="button" id="auth-switch">'+(signup?'이미 회원이신가요? 로그인':'처음이신가요? 회원가입')+'</button><button class="auth-back" type="button" id="auth-back">컬렉션으로 돌아가기</button><small>TasteDNA는 FORM에서 제공하는 패션 취향 기록 기능입니다.</small></form>';
@@ -246,7 +244,7 @@ function render(){
   for(const g of activeGroups(p,selectionMap(answers[q.questionId]))){
    body+='<section class="comparison"><p class="eyebrow">'+esc(g.id)+'</p><h2>'+esc(g.label)+'</h2>';
    if(isRanked(g)) body+='<p class="muted">좋아하는 순서대로 선택해주세요. 선택한 항목을 다시 누르면 해제돼요.<br>선택하지 않은 항목은 이 비교 안에서 선호하지 않는 항목으로 기록돼요.</p><p class="rule">'+(Number.isInteger(g.minSelections)?'최소 '+g.minSelections+'개 선택':'선택 기준 준비 중')+'</p>'+(g.minSelections===0?'<button class="secondary" data-empty-ranked="'+esc(g.id)+'">이 비교에서 선호하는 항목 없음</button>':'');
-   for(const url of g.overviewImages||[])body+='<div class="overview"><img src="'+esc(safeUrl(url))+'" alt="'+esc(g.label)+' 비교 이미지"><button class="zoom-button" data-zoom="'+esc(safeUrl(url))+'">전체 크게 보기 ↗</button></div>';
+   for(const url of g.overviewImages||[])body+='<div class="overview"><p class="muted">비교 참고 이미지 · 아래 개별 선택지에서 답해주세요.</p><img src="'+esc(safeUrl(url))+'" alt="'+esc(g.label)+' 비교 이미지"><button class="zoom-button" data-zoom="'+esc(safeUrl(url))+'">전체 크게 보기 ↗</button></div>';
    body+='<div class="choices '+(g.options.some(o=>o.images?.length)?'':'text')+'">'+g.options.map(o=>optionMarkup(o,q,g.id)).join('')+'</div></section>';
   }
  }else body='<div class="choices '+(p.options.some(o=>o.images?.length)?'':'text')+'">'+p.options.map(o=>optionMarkup(o,q)).join('')+'</div>';
