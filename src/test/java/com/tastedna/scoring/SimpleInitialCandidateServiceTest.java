@@ -128,6 +128,23 @@ class SimpleInitialCandidateServiceTest {
         var response = realService.find("member", id);
         assertEquals(List.of("R01", "R03"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
         assertEquals("미니멀", response.candidates().getFirst().sources().getFirst().optionLabel());
+
+        // 저장 답변을 수정하면 이전 선택을 재사용하지 않고 최신 관측만 후보로 연결한다.
+        var revised = new SessionAnswer(id.toString(), "Q02",
+                mapper.writeValueAsString(Map.of("selectedOptionIds", List.of("R02"))),
+                question.toString(), 3, LocalDateTime.now());
+        when(answers.findById(new SessionAnswerId(id.toString(), "Q02"))).thenReturn(Optional.of(revised));
+        when(answers.findByIdSessionIdOrderByIdQuestionIdAsc(id.toString())).thenReturn(List.of(revised));
+        when(resolver.resolve(definition.toString(), "Q02", List.of("R02")))
+                .thenReturn(Map.of("R02", rules.get("R02")));
+        var updated = realService.find("member", id);
+        assertEquals(List.of("R02"), updated.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+        assertEquals(3, updated.candidates().getFirst().sources().getFirst().answerRevision());
+        assertTrue(updated.candidates().getFirst().evidence().unresolved().isEmpty());
+        assertEquals("DEFERRED", updated.decision().status());
+        assertFalse(updated.finalResult());
+        assertTrue(updated.decision().results().isEmpty());
+        assertEquals(updated, realService.find("member", id));
     }
     @Test void excludesUnknownMismatchedAndIndirectEvidenceAndMissingCatalog() {
         select(definition, "UNKNOWN");
