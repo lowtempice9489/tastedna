@@ -214,6 +214,12 @@ test('mypage only shows server-verified records and routes resume and submitted 
  await run('openMyPage()');
  assert.match(node('main').innerHTML,/진행 중/);assert.match(node('main').innerHTML,/제출 완료/);
  assert.match(node('main').innerHTML,/미니멀/);assert.match(node('main').innerHTML,/여성복 Simple/);
+ const dashboard=node('main').innerHTML;
+ const savedSection=dashboard.slice(dashboard.indexOf('<section class="mypage-records" id="mypage-saved"'),dashboard.indexOf('<section class="mypage-records" id="mypage-recent"'));
+ assert.match(savedSection,/여성복 Simple/);assert.doesNotMatch(savedSection,/남성복 Simple|이어서 답하기/);
+ assert.match(dashboard,/내 취향 한눈에/);assert.match(dashboard,/마이페이지 메뉴/);
+ node('#mypage-saved-1').onclick();await settle();assert.equal(run('loaded'),'saved');
+ node('#mypage-retest').onclick();assert.match(node('main').innerHTML,/남성복|여성복/);
  run('session=null');await run('openMyPage()');assert.match(node('main').innerHTML,/최근 완료한 취향 기록/);
  node('#mypage-latest').onclick();await settle();assert.equal(run('loaded'),'saved');
  assert.match(node('main').innerHTML,/리빙 · 준비 중/);assert.doesNotMatch(node('main').innerHTML,/포인트|주문|일치율/);
