@@ -5,6 +5,8 @@ import com.tastedna.member.persistence.FormMemberRepository;
 import com.tastedna.session.persistence.*;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -123,9 +125,9 @@ class MemberAuthMysqlIntegrationTest {
         }
     }
 
-    @Test void flywayAndJpaSchemaValidationReachV16() {
-        assertEquals("16", flyway.info().current().getVersion().getVersion());
-        assertEquals(16, flyway.info().applied().length);
+    @Test void flywayAndJpaSchemaValidationReachV19() {
+        assertEquals("19", flyway.info().current().getVersion().getVersion());
+        assertEquals(19, flyway.info().applied().length);
         assertTrue(flyway.validateWithResult().validationSuccessful);
         // EntityManagerFactory 기동 시 전체 매핑 validate가 실행되며 이 조회도 실제 JPA를 사용한다.
         assertNotNull(members.findByEmail("missing-" + UUID.randomUUID() + "@example.test"));
@@ -167,22 +169,47 @@ class MemberAuthMysqlIntegrationTest {
         return csrfToken(browser.session());
     }
 
-    @Test void realMembersCompleteMensFlowWhileCrossMemberReadsAndWritesAreDenied() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"mens", "womens"})
+    void realMembersCompleteImageFlowWhileCrossMemberReadsAndWritesAreDenied(String scope) throws Exception {
         String run = UUID.randomUUID().toString();
         String emailA = "mysql-a-" + run + "@example.test", emailB = "mysql-b-" + run + "@example.test";
         var a = registerAndLogin(emailA);
         var b = registerAndLogin(emailB);
-        var started = mvc.perform(postWithCsrf("/api/v1/sessions/simple-image", b)).andExpect(status().isOk()).andReturn();
+        var started = mvc.perform(postWithCsrf("/api/v1/sessions/simple-image?apparelScope=" + scope, b))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.apparelScope").value(scope)).andReturn();
         String id = mapper.readTree(started.getResponse().getContentAsString()).path("sessionId").asString();
         assertEquals(members.findByEmail(emailB).orElseThrow().getMemberId(), sessions.findById(id).orElseThrow().getMallMemberId());
         mvc.perform(get("/api/v1/sessions/active").session(b.session())).andExpect(status().isOk())
                 .andExpect(jsonPath("$.sessionId").value(id));
+        mvc.perform(get("/api/v1/sessions/" + id + "/questions").session(b.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.questions.length()").value(10));
         String[] payloads = {"{\"selectedOptionIds\":[\"A\"]}", "{\"selectedOptionIds\":[\"R01\"]}",
                 "{\"selectedOptionIds\":[\"S02\"]}", "{\"selectedOptionIds\":[\"P01\"]}",
                 "{\"selectedOptionId\":\"A\"}", "{\"selectedOptionId\":\"G\"}", "{\"selectedOptionIds\":[\"NONE\"]}",
                 "{\"selections\":[{\"comparisonId\":\"C01\",\"selectedOptionId\":\"A\"},{\"comparisonId\":\"C02\",\"selectedOptionId\":\"A\"},{\"comparisonId\":\"C03\",\"selectedOptionId\":\"B\"}]}",
                 "{\"selections\":[{\"comparisonId\":\"C01\",\"selectedOptionId\":\"B\"},{\"comparisonId\":\"C02\",\"selectedOptionId\":\"E\"},{\"comparisonId\":\"C03\",\"selectedOptionId\":\"A\"}]}",
                 "{\"selectedOptionId\":\"J\"}"};
+        if ("womens".equals(scope)) {
+            payloads[4] = "{\"selectedOptionIds\":[\"A\",\"B\"]}";
+            payloads[5] = "{\"selectedOptionIds\":[\"H\"]}";
+            payloads[7] = """
+                    {"selections":[
+                      {"comparisonId":"C01","selectedOptionId":"A"},
+                      {"comparisonId":"C02","selectedOptionId":"B"},
+                      {"comparisonId":"C03","selectedOptionId":"A"},
+                      {"comparisonId":"C04","selectedOptionIds":["B","A"]},
+                      {"comparisonId":"C05","selectedOptionIds":["D","B"]}]}
+                    """;
+            payloads[8] = """
+                    {"selections":[
+                      {"comparisonId":"C01","selectedOptionId":"A"},
+                      {"comparisonId":"C02","selectedOptionIds":["E","B","A"]},
+                      {"comparisonId":"C03","selectedOptionId":"B"},
+                      {"comparisonId":"C04","selectedOptionId":"A"}]}
+                    """;
+            payloads[9] = "{\"selectedOptionIds\":[\"A\",\"S\"]}";
+        }
         for (int i = 0; i < payloads.length; i++) {
             mvc.perform(postWithCsrf("/api/v1/sessions/" + id + "/answers", b).content(mapper.writeValueAsString(
                     Map.of("questionId", "Q%02d".formatted(i+1), "expectedRevision", i, "answerPayload", mapper.readTree(payloads[i])))))
@@ -191,6 +218,20 @@ class MemberAuthMysqlIntegrationTest {
         var saved = answers.findByIdSessionIdOrderByIdQuestionIdAsc(id);
         assertEquals(10, saved.size());
         for (int i = 0; i < 10; i++) assertEquals(mapper.readTree(payloads[i]), mapper.readTree(saved.get(i).getAnswerPayload()));
+        // 수정 후 재개·재조회에서도 실제 저장된 선택 순서를 유지해야 한다.
+        payloads[4] = "womens".equals(scope)
+                ? "{\"selectedOptionIds\":[\"NONE\"]}" : "{\"selectedOptionId\":\"B\"}";
+        mvc.perform(postWithCsrf("/api/v1/sessions/" + id + "/answers", b).content(mapper.writeValueAsString(
+                Map.of("questionId", "Q05", "expectedRevision", 10, "answerPayload", mapper.readTree(payloads[4])))))
+                .andExpect(status().isOk());
+        var resumed = mvc.perform(postWithCsrf("/api/v1/sessions/" + id + "/resume", b))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.sessionId").value(id)).andReturn();
+        long revision = mapper.readTree(resumed.getResponse().getContentAsString()).path("revision").asLong();
+        var restored = mvc.perform(get("/api/v1/sessions/" + id + "/answers").session(b.session()))
+                .andExpect(status().isOk()).andReturn();
+        var restoredAnswers = mapper.readTree(restored.getResponse().getContentAsString()).path("answers");
+        for (int i = 0; i < 10; i++)
+            assertEquals(mapper.readTree(payloads[i]), restoredAnswers.path("Q%02d".formatted(i + 1)));
         for (String suffix : List.of("", "/questions", "/answers", "/preference-summary"))
             mvc.perform(get("/api/v1/sessions/" + id + suffix).session(a.session())).andExpect(status().isNotFound());
         mvc.perform(postWithCsrf("/api/v1/sessions/" + id + "/answers", a)
@@ -198,13 +239,15 @@ class MemberAuthMysqlIntegrationTest {
                 .andExpect(status().isNotFound());
         mvc.perform(postWithCsrf("/api/v1/sessions/" + id + "/submit", a).content("{\"expectedRevision\":10}"))
                 .andExpect(status().isNotFound());
-        mvc.perform(postWithCsrf("/api/v1/sessions/" + id + "/submit", b).content("{\"expectedRevision\":10}"))
+        mvc.perform(postWithCsrf("/api/v1/sessions/" + id + "/resume", a)).andExpect(status().isNotFound());
+        mvc.perform(postWithCsrf("/api/v1/sessions/" + id + "/submit", b)
+                        .content(mapper.writeValueAsString(Map.of("expectedRevision", revision))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SUBMITTED"));
         mvc.perform(get("/api/v1/sessions/" + id + "/preference-summary").session(b.session()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DIRECT_PREFERENCE_SUMMARY"));
         mvc.perform(get("/api/v1/sessions/" + id + "/preference-summary").session(a.session())).andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/sessions/" + id + "/answers").session(b.session()))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.answers.Q10.selectedOptionId").value("J"));
+                .andExpect(status().isOk());
         for (var browser : List.of(a, b)) {
             mvc.perform(postWithCsrf("/api/v1/auth/logout", browser)).andExpect(status().isNoContent());
             assertTrue(browser.session().isInvalid());
