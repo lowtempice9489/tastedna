@@ -49,9 +49,9 @@ public class TestSessionService {
     public SessionResponse start(
             String memberId,
             StartSessionRequest request) {
-        // 일반 시작 API로도 미완성 여성복 대신 다른 활성 정의를 사용하지 못하게 한다.
+        // 여성복은 모드별 활성 정의가 아니라 검증된 전용 이미지 정의를 사용한다.
         if (request.mode() == Mode.SIMPLE && request.apparelScope() == ApparelScope.womens)
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "IMAGE_DEFINITION_NOT_READY");
+            return startImageSimple(memberId, request.apparelScope());
         return startInternal(memberId, request, null);
     }
 
@@ -63,12 +63,10 @@ public class TestSessionService {
 
     @Transactional
     public SessionResponse startImageSimple(String memberId, ApparelScope apparelScope) {
-        // 승인된 정의만 범위별로 연결한다. 여성복 초안은 개수만 맞아도 사용할 수 없다.
-        // 여성복 정의와 필수 문구·선택 규칙이 확정되기 전까지 다른 활성 정의로 대체하지 않는다.
+        // 전용 정의의 완전성은 저장 전에 확인한다. 다른 활성 정의로 대체하지 않는다.
         String definitionId = switch (apparelScope) {
             case mens -> "33333333-3333-4333-8333-333333333333";
-            case womens -> throw new ResponseStatusException(
-                    HttpStatus.UNPROCESSABLE_CONTENT, "IMAGE_DEFINITION_NOT_READY");
+            case womens -> "6acc799d-1348-4f34-b756-593e9f5bfd52";
         };
         return startInternal(memberId, new StartSessionRequest(Mode.SIMPLE, apparelScope), definitionId);
     }
@@ -92,13 +90,16 @@ public class TestSessionService {
                 : definitionRepository.findById(imageDefinitionId))
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNPROCESSABLE_CONTENT,
-                        "ACTIVE_DEFINITION_NOT_FOUND"
+                        request.apparelScope() == ApparelScope.womens ? "IMAGE_DEFINITION_NOT_READY" : "ACTIVE_DEFINITION_NOT_FOUND"
                 ));
 
         List<QuestionDefinition> questions = questionRepository
                 .findByIdDefinitionIdOrderByDisplayOrderAsc(
                         definition.getDefinitionId()
                 );
+
+        if (request.mode() == Mode.SIMPLE && request.apparelScope() == ApparelScope.womens)
+            validateWomensDefinition(definition, questions);
 
         if (questions.size() != definition.getQuestionCount()) {
             throw new ResponseStatusException(
@@ -147,6 +148,31 @@ public class TestSessionService {
         }
 
         return toResponse(session, definition.getTestMode());
+    }
+
+    // 문항 수뿐 아니라 승인된 10개 ID와 기존 서버 검증기가 읽을 수 있는 정의인지 확인한다.
+    private void validateWomensDefinition(TestDefinition definition, List<QuestionDefinition> questions) {
+        try {
+            if (!"SIMPLE".equals(definition.getTestMode()) || definition.getQuestionCount() != 10
+                    || !"SIMPLE-WOMENS-IMAGE-V1".equals(definition.getVersionCode()) || questions.size() != 10)
+                throw new IllegalArgumentException();
+            for (int i = 0; i < 10; i++) {
+                var row = questions.get(i);
+                if (!"Q%02d".formatted(i + 1).equals(row.getId().getQuestionId()) || !row.isRequired())
+                    throw new IllegalArgumentException();
+                var q = mapper.readTree(row.getQuestionPayload());
+                if (q.path("prompt").asString().isBlank()) throw new IllegalArgumentException();
+                if (i == 7 || i == 8) {
+                    if (!"COMPARISON".equals(q.path("kind").asString())
+                            || ComparisonAnswerValidator.activeComparisons(q, Map.of()).size() != (i == 7 ? 5 : 4))
+                        throw new IllegalArgumentException();
+                } else {
+                    com.tastedna.session.application.multi.MultiChoiceOptionExtractor.extract(row.getQuestionPayload(), mapper);
+                }
+            }
+        } catch (RuntimeException invalidDefinition) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "IMAGE_DEFINITION_NOT_READY", invalidDefinition);
+        }
     }
 
     @Transactional(readOnly = true)

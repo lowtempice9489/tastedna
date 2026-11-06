@@ -61,7 +61,9 @@ class ImageSessionStartTest {
         assertEquals(422, generic.getStatusCode().value());
         assertEquals("IMAGE_DEFINITION_NOT_READY", generic.getReason());
         // 미완성 여성복을 기존 남성복 또는 모드별 활성 정의로 대체하지 않는다.
-        verifyNoInteractions(definitions, questions, sessions, answers);
+        verify(definitions, never()).findByTestModeAndActiveTrue(anyString());
+        verify(sessions, never()).saveAndFlush(any());
+        verifyNoInteractions(questions, answers);
     }
     @Test void existingInProgressSessionIsNotReplaced() {
         var definitions = mock(TestDefinitionRepository.class);

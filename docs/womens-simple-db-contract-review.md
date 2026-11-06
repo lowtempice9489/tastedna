@@ -1,5 +1,39 @@
 # 여성복 Simple DB 구현 전 계약 점검 — 09-D-1
 
+## 13-D: 여성복 서버 시작 연결 (MySQL 실행 확인 대기)
+
+`POST /api/v1/sessions/simple-image?apparelScope=womens`가 여성복 전용 정의를 선택한다.
+일반 시작 API의 SIMPLE/womens 요청도 같은 경로를 사용한다.
+모드·버전·10문항 ID 순서·필수 응답 여부·질문 문구와 기존 검증기의 정의 해석을 확인한 후 시작한다.
+정의 누락/불완전은 422이며 기존 진행 중 세션은 409로 보호한다.
+기존 질문 조회와 재개 서비스가 저장된 여성복 definitionId를 그대로 사용한다.
+DB의 `active`는 모드별 기본 정의 선택용이므로 변경하지 않는다. 남성복과 동일하게 서버가 전용 ID를 선택한다.
+프론트엔드 여성복 진입 UI는 이번 범위에서 변경하지 않았다.
+
+현재 Codex 환경에 테스트 DB 접속 변수가 없어 실제 Flyway·시작·조회·재개는 미검증이다.
+기존 MySQL 테스트는 V19까지 적용된 정의와 양쪽 의류 범위의 시작·조회·재개를 확인하도록 확장했다.
+새 테스트 세션은 테스트 트랜잭션으로 롤백하며 기존 세션·답변은 수정하지 않는다.
+아래를 IntelliJ PowerShell에서 실행하고 보고서를 확인해야 실제 활성화 검증이 완료된다.
+
+```powershell
+Set-Location 'C:\Users\User\IdeaProjects\tastedna'
+$env:JAVA_HOME = "$env:USERPROFILE\.jdks\temurin-21.0.11"
+$env:DB_USERNAME = 'coql'
+$env:RUN_WOMENS_MYSQL_TESTS = 'true'
+$credential = Get-Credential -UserName 'coql' -Message 'tastedna_test 비밀번호 입력'
+try {
+    $env:DB_PASSWORD = $credential.GetNetworkCredential().Password
+    .\gradlew.bat test --tests com.tastedna.session.WomensSharedDefinitionMysqlTest --rerun-tasks --offline
+}
+finally {
+    Remove-Item Env:DB_PASSWORD -ErrorAction SilentlyContinue
+    Remove-Item Env:RUN_WOMENS_MYSQL_TESTS -ErrorAction SilentlyContinue
+    $credential = $null
+}
+```
+
+이 테스트는 localhost:3306/tastedna_test와 coql로 고정하며 DB명·계정을 확인한 뒤 Flyway를 실행한다.
+
 ## 13-C: Q08~Q10 V1 정의 완성 (활성화 제외)
 
 V19는 같은 여성복 정의에 Q08~Q10을 INSERT하여 Q01~Q10을 구성한다.

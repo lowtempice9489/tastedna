@@ -88,12 +88,6 @@ class WomensSharedDefinitionMysqlTest {
                 assertEquals(mapper.readTree(source.getScoringPayload()), mapper.readTree(rule.getScoringPayload()));
             }
         }
-        long before = sessions.count();
-        assertEquals(422, assertThrows(ResponseStatusException.class,
-                () -> service.startImageSimple("verification-no-session", ApparelScope.womens)).getStatusCode().value());
-        assertEquals(422, assertThrows(ResponseStatusException.class,
-                () -> service.start("verification-no-session", new StartSessionRequest(Mode.SIMPLE, ApparelScope.womens))).getStatusCode().value());
-        assertEquals(before, sessions.count());
     }
 
     @Test void imageQuestionsAndNeutralRulesMatchV18() throws Exception {
@@ -111,12 +105,28 @@ class WomensSharedDefinitionMysqlTest {
         }
     }
 
-    @Test void finalQuestionsMatchV19WhileStartRemainsBlocked() throws Exception {
+    @Test void finalQuestionsMatchV19WithoutChangingModeDefault() throws Exception {
         for (var entry : WomensFinalDefinitionTest.questions().entrySet()) {
             var row = questions.findByIdDefinitionIdAndIdQuestionId(WOMENS, entry.getKey()).orElseThrow();
             assertEquals(entry.getValue(), mapper.readTree(row.getQuestionPayload()));
             assertTrue(row.isRequired());
         }
         assertFalse(definitions.findById(WOMENS).orElseThrow().isActive());
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void startsQueriesAndResumesBothScopesWithoutKeepingTestSessions() {
+        // 새 테스트 세션만 생성하고 테스트 트랜잭션 종료 시 롤백한다. 기존 세션은 수정하지 않는다.
+        for (var scope : java.util.List.of(ApparelScope.womens, ApparelScope.mens)) {
+            String member = "verify-" + java.util.UUID.randomUUID();
+            var started = service.startImageSimple(member, scope);
+            assertEquals(scope, started.apparelScope());
+            assertEquals(scope == ApparelScope.womens ? WOMENS : MENS, started.definitionId().toString());
+            assertEquals(10, service.getQuestions(member, started.sessionId()).questions().size());
+            assertEquals(started.sessionId(), service.resume(member, started.sessionId()).sessionId());
+        }
+        var generic = service.start("verify-" + java.util.UUID.randomUUID(), new StartSessionRequest(Mode.SIMPLE, ApparelScope.womens));
+        assertEquals(WOMENS, generic.definitionId().toString());
     }
 }
