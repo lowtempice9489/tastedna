@@ -60,7 +60,7 @@ function home(){
  </section>
  <div class="atelier-philosophy"><p>취향은 한 가지 모습으로<br>정의되지 않으니까.</p><div><span>색감</span><span>질감</span><span>분위기</span><span>스타일</span></div><small>마음이 가는 선택을 있는 그대로 기록해요.</small></div>
  <section class="atelier-guide" id="taste-guide" aria-labelledby="guide-title"><div class="guide-heading"><span></span><h2 id="guide-title"><b>TasteDNA</b>, 이렇게 이용해보세요</h2><span></span></div><div class="guide-grid">
- <article><span class="guide-number">01 / EXPLORE</span><div class="guide-symbol" aria-hidden="true">◌</div><h3>탐색할 취향 선택</h3><p>살펴보고 싶은 의류를 선택해요.<br>현재 남성복 테스트를 이용할 수 있어요.</p></article>
+ <article><span class="guide-number">01 / EXPLORE</span><div class="guide-symbol" aria-hidden="true">◌</div><h3>탐색할 취향 선택</h3><p>살펴보고 싶은 의류를 선택해요.<br>남성복·여성복 Simple 테스트를 이용할 수 있어요.</p></article>
  <article><span class="guide-number">02 / CHOOSE</span><div class="guide-symbol" aria-hidden="true">≡</div><h3>마음이 가는 쪽으로</h3><p>10개의 질문에 답하며 색, 스타일,<br>디테일에 대한 선호를 알려주세요.</p></article>
  <article><span class="guide-number">03 / DISCOVER</span><div class="guide-symbol" aria-hidden="true">◎</div><h3>나의 취향 기록 확인</h3><p>직접 고른 선택과 그 근거를<br>하나의 선호 요약으로 돌아보세요.</p></article>
  <article><span class="guide-number">04 / BROWSE</span><div class="guide-symbol" aria-hidden="true">↗</div><h3>새로운 시선으로 탐색</h3><p>발견한 취향을 떠올리며<br>FORM의 데모 컬렉션을 둘러보세요.</p></article>
@@ -94,7 +94,7 @@ function selectApparel(){
  <div class="wardrobe-grid">
  <button type="button" class="wardrobe-card wardrobe-mens" id="choose-mens"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 19-18 9-6 51 17 3 4-28v34h36V54l4 28 17-3-6-51-18-9-15 9Z"/><path d="m35 19 15 9-12 19-8-20m35-8L50 28l12 19 8-20M50 28v60M35 62h9m12 0h9"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">MENSWEAR</span><span class="wardrobe-name">남성복</span><span class="wardrobe-detail">마음이 가는 색과 스타일,<br>나의 의류 취향을 발견해보세요.</span><span class="wardrobe-cta">취향 알아보기 ↗</span></span></button>
  <button type="button" class="wardrobe-card wardrobe-womens" id="choose-womens" aria-label="여성복 취향 알아보기"><span class="wardrobe-art" aria-hidden="true"><svg viewBox="0 0 100 100" focusable="false"><path d="m35 18-16 9-8 34 15 4 9-23-3 43h36l-3-43 9 23 15-4-8-34-16-9-15 8Z"/><path d="m35 18 15 8-10 13-10-18m35-3L50 26l10 13 10-18M50 26v59M33 68h34"/></svg></span><span class="wardrobe-copy"><span class="wardrobe-kicker">WOMENSWEAR</span><span class="wardrobe-name">여성복</span><span class="wardrobe-detail">마음이 가는 색과 스타일,<br>나의 의류 취향을 발견해보세요.</span><span class="wardrobe-cta">취향 알아보기 ↗</span></span></button>
- </div><p class="wardrobe-note">현재 남성복 테스트를 이용할 수 있어요.</p><button type="button" class="secondary" id="scope-back">← 카테고리로</button></section>`;
+ </div><p class="wardrobe-note">남성복·여성복 Simple 테스트를 이용할 수 있어요.</p><button type="button" class="secondary" id="scope-back">← 카테고리로</button></section>`;
  document.querySelector('#choose-mens').onclick=()=>selectTestMode('mens');
  document.querySelector('#choose-womens').onclick=()=>selectTestMode('womens');
  document.querySelector('#scope-back').textContent='← 카테고리로';
@@ -317,7 +317,7 @@ async function result(){
  };
  bindZoom();
  // 리포트를 먼저 표시하고 상품 조회 실패는 이 영역 안에서만 안내한다.
- const heading='<p class="eyebrow">FORM · DEMO COLLECTION</p><h2>내가 선택한 착장과 연결된 FORM 전시 상품</h2><p class="muted">직접 선택한 이미지와 같은 이미지를 사용하는 전시 상품입니다. 상품명과 가격은 시연용 예시입니다.</p>';
+ const heading='<p class="eyebrow">FORM · DEMO COLLECTION</p><h2>내가 선택한 스타일과 연결된 FORM 전시 상품</h2><p class="muted">Q02에서 직접 선택한 스타일과 상품에 등록된 스타일 속성이 일치하는 전시 상품입니다. 상품명과 가격은 시연용 예시입니다.</p>';
  try{
   const matched=await api('/sessions/'+resultSessionId+'/matched-demo-products');
   products.innerHTML=heading+(matched.products.length?'<div class="matched-product-grid">'+matched.products.map(p=>'<article class="matched-product-card"><img src="'+esc(safeUrl(p.imageUrl))+'" alt="'+esc(p.name)+'" loading="lazy"><div><span class="tag">FORM 전시 상품</span><h3>'+esc(p.name)+'</h3><p class="matched-product-price">'+esc(Number(p.price).toLocaleString('ko-KR'))+'원</p><p class="source">선택 근거: '+p.evidence.map(e=>esc(e.questionId)+' · '+esc(e.optionId)).join(' / ')+'</p></div></article>').join('')+'</div>':'<p class="matched-product-state">이번 선택과 연결된 FORM 전시 상품이 없습니다.</p>');

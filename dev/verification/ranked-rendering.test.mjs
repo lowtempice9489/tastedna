@@ -134,7 +134,9 @@ test('matched demo products render server fields, empty and failure states witho
   await vm.runInContext('result()',context);
   assert.match(vm.runInContext('main.innerHTML',context),/나의 직접 선호 기록/);
   const html=sections.find(e=>e.className==='matched-products').innerHTML;
-  assert.match(html,/내가 선택한 착장과 연결된 FORM 전시 상품/);
+  assert.match(html,/내가 선택한 스타일과 연결된 FORM 전시 상품/);
+  assert.match(html,/Q02에서 직접 선택한 스타일과 상품에 등록된 스타일 속성이 일치/);
+  assert.doesNotMatch(html,/같은 이미지를 사용하는/);
   assert.doesNotMatch(html,/추천|유사도|점수/);
   if(outcome==='products'){
    assert.match(html,/서버 상품 &lt;A&gt;/);assert.match(html,/59,000원/);
