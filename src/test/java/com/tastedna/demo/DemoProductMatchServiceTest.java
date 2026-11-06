@@ -17,6 +17,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DemoProductMatchServiceTest {
+    @Test void expandedCatalogMatchesRegisteredStylesWithoutUsingImages() throws Exception {
+        var catalog = DemoCatalogTest.catalog(true);
+        when(products.findMatchingStyles(any())).thenReturn(catalog);
+        select("R12", "글램·화려함");
+        var result = service.match("member", id);
+        assertEquals(List.of("look-62"), result.products().stream().map(DemoProductMatchService.Product::id).toList());
+        assertEquals(result, service.match("member", id));
+        select("R01", "미니멀");
+        assertEquals(10, service.match("member", id).products().size());
+        select("R08", "빈티지·레트로");
+        assertTrue(service.match("member", id).products().isEmpty());
+    }
     @Test void migrationCatalogMatchesOnlyExplicitStyles() throws Exception {
         var catalog = DemoCatalogTest.catalog();
         when(products.findMatchingStyles(any())).thenReturn(catalog);

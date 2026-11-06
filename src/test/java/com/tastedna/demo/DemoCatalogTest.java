@@ -13,7 +13,12 @@ class DemoCatalogTest {
     static final Path MIGRATIONS = Path.of("src/main/resources/db/migration");
 
     static List<DemoProduct> catalog() throws Exception {
+        return catalog(false);
+    }
+
+    static List<DemoProduct> catalog(boolean expanded) throws Exception {
         String additions = Files.readString(MIGRATIONS.resolve("V21__expand_demo_catalog_to_30.sql"));
+        if (expanded) additions += Files.readString(MIGRATIONS.resolve("V22__expand_demo_catalog_to_100.sql"));
         String sql = Files.readString(MIGRATIONS.resolve("V15__create_demo_store_catalog.sql")) + additions;
         Map<String, Set<String>> styles = new HashMap<>();
         var tags = Pattern.compile("INSERT INTO td_demo_product_style .*?VALUES \\('([^']+)','([^']+)'\\);").matcher(additions);
@@ -53,6 +58,35 @@ class DemoCatalogTest {
         }
         assertEquals(5, products.stream().filter(p -> p.getStyleCodes().isEmpty()).count());
         String sql = Files.readString(MIGRATIONS.resolve("V21__expand_demo_catalog_to_30.sql"));
+        assertFalse(sql.contains("UPDATE "));
+        assertFalse(sql.contains("DELETE "));
+    }
+
+    @Test void expandedCatalogPreservesThirtyProductsAndListsOneHundred() throws Exception {
+        var original = catalog();
+        var expanded = catalog(true);
+        assertEquals(100, expanded.size());
+        var allowed = new HashSet<String>();
+        ImageDefinitionTest.questions().get("Q02").path("options").forEach(o -> allowed.add(o.path("id").asString()));
+        for (var p : expanded) {
+            assertTrue(Files.isRegularFile(Path.of(p.getImageUrl().substring("/assets/".length()))), p.getImageUrl());
+            assertTrue(allowed.containsAll(p.getStyleCodes()));
+            assertTrue(p.getPrice() > 0);
+            assertTrue(p.getDescription().contains("시연"));
+        }
+        for (int i = 0; i < 30; i++) {
+            assertEquals(original.get(i).getProductId(), expanded.get(i).getProductId());
+            assertEquals(original.get(i).getImageUrl(), expanded.get(i).getImageUrl());
+            assertEquals(original.get(i).getStyleCodes(), expanded.get(i).getStyleCodes());
+        }
+        var repository = mock(DemoProductRepository.class);
+        when(repository.findAllByOrderByDisplayOrderAsc()).thenReturn(expanded);
+        var cards = new DemoProductController(repository).list();
+        assertEquals(100, cards.size());
+        assertTrue(cards.stream().allMatch(DemoProductController.Product::demo));
+        assertEquals(expanded.stream().map(DemoProduct::getProductId).toList(),
+                cards.stream().map(DemoProductController.Product::id).toList());
+        String sql = Files.readString(MIGRATIONS.resolve("V22__expand_demo_catalog_to_100.sql"));
         assertFalse(sql.contains("UPDATE "));
         assertFalse(sql.contains("DELETE "));
     }
