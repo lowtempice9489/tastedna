@@ -17,6 +17,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DemoProductMatchServiceTest {
+    @Test void migrationCatalogMatchesOnlyExplicitStyles() throws Exception {
+        var catalog = DemoCatalogTest.catalog();
+        when(products.findMatchingStyles(any())).thenReturn(catalog);
+        select("R01", "미니멀");
+        assertEquals(List.of("look-01", "look-16", "look-21", "look-26"),
+                service.match("member", id).products().stream().map(DemoProductMatchService.Product::id).toList());
+        select("R12", "글램·화려함");
+        assertTrue(service.match("member", id).products().isEmpty());
+    }
     final TestSessionService sessions = mock(TestSessionService.class);
     final SessionAnswerRepository answers = mock(SessionAnswerRepository.class);
     final SessionObservationService observations = mock(SessionObservationService.class);
