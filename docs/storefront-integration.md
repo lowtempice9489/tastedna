@@ -1,146 +1,114 @@
-# TasteDNA 임시 쇼핑몰과 Simple 이미지 테스트
+# TasteDNA V1 실행·쇼핑몰 연동 가이드
 
-## 현재 제공하는 기능
+현재 구현 기준: 15-T3B3. 과거 남성복 전용·Basic 중심 안내를 이 가이드로 대체한다. FORM은 같은 출처에서 실행되는 데모 쇼핑몰이며, 외부 쇼핑몰 자동 연동 제품은 아니다.
 
-FORM은 TasteDNA를 쇼핑몰의 추가 서비스로 소개하는 로컬 전시용 쇼핑몰이다.
-상품 목록·카테고리 필터·상세 → TasteDNA 소개 → 회원 연결 → 10문항 →
-답변 검토·제출 → 직접 선호 결과 → 쇼핑몰로 복귀 흐름을 제공한다.
-상품명과 가격은 전시용 예시이며 주문·결제·재고 또는 개인화 추천 기능은 없다.
+## 실행 환경과 프로필
 
-현재 구현 범위는 남성복 Simple이다. 여성복 이미지 원본은 보존하지만,
-여성복 질문 규칙과 코드 대응이 승인되기 전에는 남성복 정의를 복제해 제공하지 않는다.
+[README 실행 예시](../README.md#실행)를 사용한다. 프로젝트 루트에서 Java 21/Gradle Wrapper로 실행하고 MySQL 8.4의 독립 테스트 DB를 준비한다.
 
-## 로컬 실행
+| 설정 | 실제 의미 |
+|---|---|
+| DB_USERNAME / DB_PASSWORD | MySQL 접속 계정. 비밀값은 실행 프로세스 환경에만 주입 |
+| SPRING_DATASOURCE_URL | 테스트는 `jdbc:mysql://localhost:3306/tastedna_test?connectionTimeZone=UTC`로 명시. 기본 application.yaml은 tastedna를 가리킴 |
+| member-auth | FORM DB 회원·서버 세션·CSRF·정적 화면·공개 데모 상품 API |
+| local | DEV_MEMBER_PASSWORD를 사용하는 개발용 Basic 계정. CSRF 비활성 개발 설정이므로 운영 사용 금지 |
+| 프로필 미지정 | 기본 차단 정책. member-auth와 local 동시 사용은 시작 실패 |
+| AUTH_COOKIE_SECURE | 기본 true. localhost HTTP 검증에서만 false |
+| server.port | Spring 기본 8080. README는 실행 인자로 8081 지정 |
 
-1. Java 21과 MySQL 8.4를 준비한다.
-2. IntelliJ 실행 구성의 working directory를 저장소 루트로 설정한다.
-3. 환경변수 DB_USERNAME, DB_PASSWORD, DEV_MEMBER_PASSWORD를 설정한다.
-   실제 값은 소스나 공유 문서에 기록하지 않는다.
-4. local 프로필로 TastednaApplication을 실행한다.
-5. http://localhost:8080 에서 전시 쇼핑몰을 연다.
-6. TasteDNA에서 dev-image-demo와 설정한 개발용 비밀번호로 연결한다.
-   기존 dev-member-001 / dev-member-002 계정은 이전 진행 세션 확인용으로 유지한다.
+회원 인증 쿠키는 FORMSESSION, HttpOnly, SameSite=Lax이며 서버 세션 유휴 만료는 30분이다. 운영 전 HTTPS·프록시·세션 저장·요청 제한 정책을 별도 검토해야 한다. member-auth는 운영 준비 완료 선언이 아니다.
 
-Gradle로 실행할 경우 JAVA_HOME을 Java 21로 지정한 뒤:
+Flyway는 시작 시 V1~V25 중 미적용 파일을 실행한다. JPA ddl-auto는 validate다. 기존 마이그레이션을 편집하거나 개발 DB를 초기화하지 않는다. 테스트 프로필만 bootRun에 추가한다고 자동으로 테스트 DB가 선택되는 것은 아니다.
 
-    .\gradlew.bat bootRun --args='--spring.profiles.active=local'
+`QuestionAssetConfig`는 작업 디렉터리의 `gender/`를 `/assets/gender/**`로 제공한다(local 또는 member-auth). JAR만 복사하면 이 이미지가 포함되지 않는다. 외부 배포에는 자산 폴더 보존 또는 정적 호스팅 연결이 필요하며 과거 답변의 이미지 URL을 깨뜨리지 않아야 한다.
 
-실행 시 Flyway가 V13~V15를 적용하므로 적용 대상 DB를 먼저 확인한다.
-기존 활성 정의나 세션을 갱신·삭제하지 않고 새 정의 및 전시 데이터를 추가한다.
-새 이미지 테스트는 서버가 고정된 정의 ID를 선택하는 전용 시작 API를 사용한다.
-기존 정의의 active 상태를 바꾸지 않는다.
+## 회원과 소유권 경계
 
-회원당 진행 중 세션은 하나라는 기존 정책을 유지한다. 진행 중 세션이 있으면
-해당 세션을 이어간다. 이전 정의로 시작한 세션에는 새 이미지를 임의로 덧붙이지 않는다.
-기존 Simple 제출 후 새 테스트를 시작하면 이미지 v2를 사용한다.
-기존 Deep 세션이 있는 경우 이 화면에서 Simple로 변환하지 않는다.
+FORM은 이메일·비밀번호 가입 후 별도 로그인한다. TasteDNA용 추가 계정은 없다. `Authentication.getName()`의 내부 회원 ID가 세션의 `mallMemberId`에 연결된다. 요청 본문으로 회원 ID나 정의 ID를 지정하지 않는다. 현재 FORM 회원 ID는 `form-` UUID이며 로그인 이메일을 소유권 키로 사용하지 않는다.
 
-## 이미지 제공
+외부 쇼핑몰은 자신의 검증된 인증 주체를 이 경계에 연결해야 한다. 현재 member-auth의 회원 상태 필터는 FORM 회원 테이블을 조회하므로 단순히 임의 Authentication을 주입하는 것만으로 외부 회원 연동이 완료되지 않는다. 인증 어댑터·권한·현재 회원 상태 확인을 통합하되 기존 세션 소유권 검사를 유지해야 한다. 다중 쇼핑몰 테넌트 격리와 회원 ID 네임스페이스도 별도 설계 대상이다. JWT/OAuth·범용 SDK·CORS 자동 설정은 제공하지 않는다.
 
-QuestionAssetConfig는 local 프로필에서 저장소의 gender 디렉터리를
-/assets/gender/** 로 제공한다. HTML은 DB에서 내려온 이미지 경로만 사용한다.
-따라서 배포 산출물의 JAR만 복사하면 이미지가 포함되지 않는다.
-로컬 실행에는 gender 폴더가 함께 필요하다. 운영 도입 시 정적 파일 호스팅/CDN으로
-교체하고 버전별 자산을 불변으로 보관해야 한다.
+인증 경로는 `/api/v1/auth/csrf` GET, `/signup` POST, `/login` POST, `/logout` POST, `/me` GET이다(모두 `/api/v1/auth` 아래). 가입·로그인·로그아웃 및 인증 후 변경 요청에 CSRF가 필요하다. GET csrf의 `headerName`·`token`을 변경 요청 헤더로 보내고, 로그인·로그아웃 후 다시 발급받는다. 쿠키는 same-origin 브라우저가 관리한다. 구체적인 JSON과 오류 처리는 [인증 계약](member-auth-contract.md)과 [프런트엔드 연결](form-frontend-auth.md)을 참고한다. 해당 인증 문서의 작업 03 초기 미구현 기록은 역사적 상태이며 현재 범위는 이 가이드와 README를 기준으로 본다.
 
-소스 이미지 자체는 변경하지 않았다. Q08 합본은 원본 비교 패널로 제공하고
-선택 버튼을 연결했다. Q09 그룹의 여러 이미지는 하나의 선택 단위를 구성한다.
-전체 이미지 확인은 크게 보기 버튼으로 제공한다.
+## 실제 Simple API 흐름
 
-## 질문 계약
+모든 세션 경로는 인증된 본인만 사용한다. 아래 `{id}`는 시작 응답의 sessionId다.
 
-새 정의: 33333333-3333-4333-8333-333333333333 / SIMPLE-MENS-IMAGE-V2
+| 순서 | 메서드·경로 | 계약 |
+|---|---|---|
+| 시작 | POST `/api/v1/sessions/simple-image?apparelScope=mens` | 여성복은 womens. 본문 없음, CSRF 필요. 서버가 준비된 정의를 선택 |
+| 진행 확인 | GET `/api/v1/sessions/active` | 진행 중 세션 없으면 204 |
+| 세션 | GET `/api/v1/sessions/{id}` | SessionResponse |
+| 질문 | GET `/api/v1/sessions/{id}/questions` | QuestionListResponse; 실제 서버 정의를 렌더링 |
+| 개별 질문 | GET `/api/v1/sessions/{id}/questions/{questionId}` | QuestionResponse |
+| 저장·수정 | POST `/api/v1/sessions/{id}/answers` | SaveAnswerRequest → SessionResponse |
+| 복구 | GET `/api/v1/sessions/{id}/answers` | session과 answers 스냅샷 |
+| 재개 | POST `/api/v1/sessions/{id}/resume` | 본문 없음 → SessionResponse |
+| 제출 | POST `/api/v1/sessions/{id}/submit` | SubmitSimpleRequest → SessionResponse |
+| 기록 | GET `/api/v1/sessions/history` | SessionHistoryResponse 배열; 본인 Simple 기록, 최신순 |
+| 리포트 | GET `/api/v1/sessions/{id}/preference-summary` | 제출 완료 직접 선호 요약 |
+| 초기 후보 | GET `/api/v1/sessions/{id}/initial-candidates` | 후보·근거와 DEFERRED 최종 판별 상태 |
+| 상품 | GET `/api/v1/sessions/{id}/matched-demo-products` | 제출 완료 세션의 등록 속성 일치 상품 |
 
-| 문항 | 구성 |
-| --- | --- |
-| Q01 | 텍스트 복수 선택, 최대 5 |
-| Q02 | 텍스트 스타일 직접 선호, 최대 4 |
-| Q03 | 텍스트 실루엣 선호, 최대 3 |
-| Q04 | 텍스트 패턴 선호, 최대 4 |
-| Q05 | A~F 착장 이미지 중 하나 |
-| Q06 | A~G 의류 이미지 중 하나, 과거 P코드와 자동 동등시하지 않음 |
-| Q07 | A~G 회피 이미지 최대 2개 또는 NONE 단독 |
-| Q08 | C01 A/B 그룹, C02 A/B/C, 조건부 C02_POCKETS A/B, C03 A/B/C |
-| Q09 | C01 A/B 그룹, C02 A~E 단일 선택, C03 A/B 그룹 |
-| Q10 | A~J 착장 이미지 중 하나 |
+SessionResponse: `sessionId, mode, apparelScope, status, revision, definitionId, leaseUntil`.
+SessionHistoryResponse: `sessionId, mode, apparelScope, status, startedAt, submittedAt`.
+회원당 진행 중 세션 보호를 유지한다. 새 세션을 강제 생성하거나 과거 definitionId를 새 정의로 바꾸지 않는다. 불완전한 정의는 422로 거부한다. 기존 POST `/sessions`도 있지만 현재 이미지 Simple 진입에는 위 전용 경로를 사용한다.
 
-Q08 C02에서 B 또는 C를 선택하면 C02_POCKETS가 필수다.
-A로 바꾸면 후속 답변을 제거한다. 서버는 숨겨진 후속 답변도 거부한다.
-비교 질문의 selections 배열은 comparisonId와 selectedOptionId를 함께 보존한다.
-Q08 안내 문구는 3지선다·조건부 흐름에 맞춰 ‘작은 차이에서, 나의 취향을 골라주세요’로 제공한다.
+저장 예시(현재 세션 revision이 0일 때의 Q01):
 
-## DB 우선 원칙
+```json
+{"questionId":"Q01","expectedRevision":0,"answerPayload":{"selectedOptionIds":["A","B"]}}
+```
 
-- V13: 질문·옵션·이미지 경로·조건·직접 관측 규칙을 기존 정의 테이블에 추가한다.
-- V14: 실행 시 읽던 실험용 판별/시각 메타데이터 4개를 td_scoring_configuration으로 이전한다.
-- V15: 전시 상품을 td_demo_product에 저장한다.
-- 모든 새 DB 접근은 Spring Data JPA를 사용한다.
-- 실행 코드에서 dev/fixtures/*.json 파일을 읽지 않는다.
-- 기존 질문·답변 스냅샷 및 중첩 메타데이터는 DB JSON 컬럼을 유지한다.
-  이는 파일 저장이 아니라 기존 계약과 비교/조건 관계를 보존하기 위한 DB 데이터다.
-- dev/fixtures의 기존 JSON은 독립 알고리즘 테스트 및 이력 확인에 사용하는 자료다.
-  운영 설정의 원본으로 다시 사용하지 않는다.
+매 저장 응답의 revision을 다음 요청에 반영한다. 제출 본문은 `{"expectedRevision":10}`처럼 **실제 마지막 revision**을 사용하며 10으로 고정하지 않는다. 수정하면 revision이 더 커질 수 있다. 오래된 revision의 요청을 무조건 재시도하지 말고 현재 저장값을 재조회한다.
 
-## API 연동
+단일 답변은 `{"selectedOptionId":"A"}`, 비교형은 다음 형식이다. 예시는 구조 설명이며 해당 문항의 실제 옵션·최소/최대·조건을 조회해 적용한다.
 
-local 프로필에서 제공하는 추가 경로:
+```json
+{"selections":[{"comparisonId":"C01","selectedOptionId":"A"},{"comparisonId":"C04","selectedOptionIds":["B","A"]}]}
+```
 
-| 메서드 | 경로 | 역할 |
-| --- | --- | --- |
-| GET | /api/v1/demo/products | 공개 전시 상품 카탈로그 |
-| POST | /api/v1/sessions/simple-image | 인증 회원의 남성복 이미지 v2 시작 |
-| GET | /api/v1/sessions/{id}/answers | 회원 소유권 확인 후 session + 저장 답변 스냅샷 |
-| GET | /api/v1/sessions/{id}/preference-summary | 제출된 Simple 세션의 근거 기반 요약 |
+순위형 배열 순서는 순위다. 일반 복수선택 순서는 선호 순위가 아니다. NONE은 정의된 문항에서 이미지와 배타적이다. 일반 미선택과 단일 비교 대안을 비선호로 해석하지 않는다. 남성복 Q09 C02는 현재 단일 비교이며 여성복 Q08 C04/C05·Q09 C02는 순위형이다. [순위형 계약](ranked-comparison-contract.md)을 함께 확인한다.
 
-답변 저장과 제출은 기존 /answers POST 및 /submit POST를 사용한다.
-정의 ID·회원 ID·채점 규칙은 클라이언트가 지정하지 않는다.
-answers GET과 preference-summary는 세션 행 잠금 내에서 읽어 revision과 응답을 일치시킨다.
-화면은 인증 정보를 브라우저 저장소에 저장하지 않는다. 새로고침 시 다시 연결하고
-URL의 세션 ID로 저장된 답변을 복원한다. 답변은 다음 버튼을 눌렀을 때 DB에 저장된다.
+## Raw와 결과의 경계
 
-기존 /simple-result는 기존 v1 후보 분석 계약을 유지한다.
-이미지 v2에는 /preference-summary를 사용한다. 새 정의의 이미지/속성 의미를
-기존 실험용 후보 매핑에 억지로 연결하지 않는다.
+Raw는 저장된 최신 답변·정의·옵션 규칙으로 서버 내부에서 수집한다. 개발 조회 `GET /api/v1/sessions/{id}/raw-observations`는 **dev 프로필 전용**이며 member-auth 보안 정책에서는 공개하지 않는다. 연동을 위해 임의로 dev를 운영에 활성화하지 않는다. 외부 공개가 필요하면 별도 접근 제어·공개 DTO 계약을 정해야 한다.
 
-도입 쇼핑몰은 인증된 회원 식별자를 Spring Security Authentication에 연결하고,
-데모 상품 API와 화면을 자체 카탈로그로 교체하면 된다.
-실제 상품 추천은 승인된 상품 속성 매핑과 별도 정책이 필요하며 현재 구현에는 없다.
+현재 사용자 리포트는 `preference-summary`를 사용한다. 응답은 `session, status, title, description, comprehensiveResult, evidence`; 상태는 DIRECT_PREFERENCE_SUMMARY, comprehensiveResult는 false다. evidence에는 questionId·comparisonId·prompt·meaning·answerRevision·selections·alternatives 및 순위형 notPreferred가 있다. 선택에는 optionId·label·images와 해당하는 경우 rank가 포함된다.
 
-## 결과의 의미
+Q02 단일 선택은 그 스타일, 복수는 동등한 모든 직접 선호로 표시한다. initial-candidates는 근거 질문·옵션·Raw 유형·revision을 추적하며 `finalResult=false`, `decision.status=DEFERRED`를 유지한다. 후보가 없어도 결과를 채우지 않는다. local 전용 실험 API `/simple-result`는 이미지 Simple의 운영 계약이 아니다. [후보 API](simple-initial-candidates-api.md), [기존 승인 부족 조건](simple-result-finalization-gaps.md)을 재사용한다.
 
-결과는 Q02의 직접 선택한 스타일을 제목으로 사용하고 색상·핏·패턴,
-첫인상 착장·소유 선호·최종 착장, 비교/조합 선택과 명시적 회피를 함께 보여준다.
-25개 후보에 대한 검증되지 않은 점수·순위·성격 유형은 생성하지 않는다.
-Q07 NONE은 회피 근거 없음이며 모든 착장을 좋아한다는 의미가 아니다.
-기존 단일 비교에서 선택하지 않은 대안도 부정 선호로 분류하지 않는다.
-명시적인 순위형 비교는 해당 그룹 안에서만 미선택 비선호를 보존한다.
-공통 정의/답변 계약과 검증 범위는 [순위형 비교 인계](ranked-comparison-contract.md)를 참고한다.
-결과는 저장된 presented_payload와 answer_revision에서 생성하므로,
-현재 질문 표시 데이터를 변경해도 기존 답변의 설명을 바꾸지 않는다.
-이미지 파일 자체를 덮어쓰는 것까지 막지는 않으므로 자산 버전 관리가 필요하다.
+리포트는 별도 최종 RESULT 저장 테이블이 아니라 저장 답변에서 재구성한다. 화면은 상세 선택 기록을 접어서 제공하고 상품 최초 4개·더 보기를 지원한다.
 
-결과는 별도 결과 테이블에 저장하지 않고 제출 후 불변 답변에서 재구성한다.
-요약 상태는 DIRECT_PREFERENCE_SUMMARY, comprehensiveResult는 false다.
-DB의 기존 답변 데이터를 관리자가 직접 수정한 경우까지 불변성을 보장하지 않는다.
+## 상품 시스템 연결
 
-## 검증
+[상품 매칭 계약](demo-product-matching-api.md)을 따른다. 공개 FORM 목록은 GET `/api/v1/demo/products`이며 `id, name, category, price, imageUrl, description, demo`를 반환한다. 관리용 상품 등록 API는 없다.
 
-DB 없이 실행 가능한 핵심 회귀 테스트:
+외부 상품 공급 시 기존 DemoProduct/JPA 구조에서 `productId, name, category, price, imageUrl, description, displayOrder, styleCodes, apparelScope, colorCodes`를 준비한다. productId는 기존 쇼핑몰 상품과 대응하는 안정적인 키, imageUrl은 표시용, price는 현재 정수 가격 모델이다. 통화·옵션별 재고·판매 상태·가격 동기화는 자동 제공하지 않는다. 자체 상품 엔티티/Repository 연동 또는 명시적 동기화 구현이 필요하다.
 
-    .\gradlew.bat test --offline --tests '*ImageDefinitionTest' --tests '*ImageSessionStartTest' --tests '*PreferenceSummaryServiceTest' --tests '*TestSessionServiceTest' --tests '*TestSessionTest' --tests '*SingleChoice*Test' --tests '*MultiChoiceExclusiveOptionTest' --tests '*DirectObservationCollectorTest'
-    node --test dev/verification/assessment-state.test.mjs
-    node --check src/main/resources/static/app.js
-    node --check src/main/resources/static/shop.mjs
+apparelScope는 MENS/WOMENS/UNISEX 또는 미분류(null), styleCodes는 승인 Q02 R01~R12 집합, colorCodes는 승인 Q01 A~O 집합이다. category는 상품 분류로 styleCodes와 다르다. 없는 속성은 빈 집합으로 유지한다. 모델 외형이나 유사 코드로 속성을 추론하지 않는다. [범위 근거](demo-catalog-apparel-scope.md), [색상 코드·등록 근거](demo-catalog-colors.md)를 참고한다.
 
-ImageDefinitionTest는 별도 JSON 파일이 아닌 실제 V13 마이그레이션에서 질문을 읽고
-이미지 존재, 선택 개수, 조건부 응답, 기존 A/B 계약 호환성을 검증한다.
-PreferenceSummaryServiceTest는 소유권, 제출 조건, 직접 회피, 비교 대안 및 근거 revision을 검증한다.
-단위 테스트 통과는 MySQL 마이그레이션과 브라우저 전체 흐름의 통과를 뜻하지 않는다.
+범위 적합 + Q02 스타일 일치가 추천 자격이다. Q01 색상 일치 상품이 먼저이며 각 그룹 내부는 상품 ID순이다. 색상 불일치·미등록도 유지한다. Q01이 없으면 기존 ID순이다. 점수·일치율·색상 일치 개수 순위는 없다. RESULT 유형은 검색 조건이 아니다. 현재 데모 100개 등록과 실제 판매 카탈로그 완성은 구분한다.
 
-실제 검증 시 별도의 테스트 DB와 테스트 회원 데이터를 사용한다.
-기존 개발 회원의 진행 중 세션을 테스트 편의상 변경하거나 삭제하지 않는다.
+## 외부 재현 시 남아 있는 환경 의존성
 
+- 기본 DB URL은 localhost/tastedna: 테스트와 배포마다 명시적으로 재지정해야 한다.
+- gender 파일 경로는 작업 디렉터리 기준이며 외부 자산 배포는 수동 연결이 필요하다.
+- Q01·Q02 승인 어휘는 서비스에 명시되어 있고 초기 후보의 승인 매핑 조회에는 기존 정의 ID가 남아 있다. 임의 질문 어휘를 자동 수용하는 범용 엔진이 아니다.
+- FORM 인증과 상품 목록·회원 화면은 데모 구현이다. 외부 인증/카탈로그 연동과 운영 HTTPS·분산 환경은 별도 작업이다.
+- MySQL 통합 테스트는 localhost:3306/tastedna_test 및 테스트 계정명 coql을 의도적으로 제한한다. 외부 개발자는 별도 테스트 DB와 해당 제한 계정을 준비해야 한다. 운영 DB로 안전장치를 우회하지 않는다.
 
-## 2026-11-03 선택 입구 추가
+## 검증 재현
 
-TasteDNA 시작 전 남성·여성 선택 화면을 제공한다. 남성은 기존 로그인·남성복 테스트로 연결된다. 여성은 준비 중 안내 및 선택 화면 복귀만 제공하며 API 호출이나 세션 생성은 하지 않는다. 결과의 새 기록 시작도 선택 화면으로 연결한다. 여성복은 선택지 수가 더 많고 일부 질문 수정이 필요하므로 실제 여성복 질문 정의·DB·결과 구현은 후속 작업이다. 상세 인수인계는 TasteDNA-ChatGPT-handoff-2026-11-03.md를 참고한다.
+평소에는 변경 영역만 실행한다. [README](../README.md)의 Java·Node 예시를 사용한다. 실제 MySQL 통합 검증은 독립 DB와 coql 테스트 계정을 준비하고 DB_USERNAME=coql, DB_PASSWORD를 프로세스 환경에 주입한 후 실행한다.
+
+```powershell
+$env:RUN_MEMBER_MYSQL_TESTS='true'
+try {
+    .\gradlew.bat test --tests 'com.tastedna.member.MemberAuthMysqlIntegrationTest' --rerun-tasks
+} finally {
+    Remove-Item Env:RUN_MEMBER_MYSQL_TESTS -ErrorAction SilentlyContinue
+}
+```
+
+비밀번호 입력·정리는 README의 숨김 입력 방식을 사용한다. 이 테스트는 Flyway 적용과 검증용 회원·세션 추가를 수행할 수 있다. 기존 데이터 삭제·초기화를 하지 않는다. BUILD SUCCESSFUL과 함께 XML의 tests/failures/errors/skipped를 확인한다. 보고서는 `build/test-results/test`와 `build/reports/tests/test/index.html`에 생성된다. 이 문서 작업에서는 DB나 브라우저를 재실행하지 않았다. 기능별 검증 수준과 미완성 항목은 README에 요약되어 있다.

@@ -1,232 +1,76 @@
-# TasteDNA
+# TasteDNA V1
 
-## 최신 구현: 임시 쇼핑몰과 남성복 이미지 Simple
+TasteDNA는 쇼핑몰 회원의 의류 취향 응답을 저장하고, 설명 가능한 직접 선호와 Raw 관측으로 연결하는 Java/Spring 서비스입니다. FORM은 이를 시연하는 데모 쇼핑몰입니다. TasteDNA용 별도 회원가입을 요구하는 서비스나 완성된 전자상거래 플랫폼은 아닙니다.
 
-local 프로필에서 http://localhost:8080 을 열면 전시용 쇼핑몰, 상품 상세,
-TasteDNA 10문항, 이미지 선택, 답변 저장·재개·제출, 직접 선호 결과 화면을 이용할 수 있습니다.
-질문·이미지 경로·규칙·전시 상품은 DB/JPA로 관리합니다.
-결과는 직접 선택한 취향의 요약이며 종합 25개 유형 판별이나 상품 추천은 아직 제공하지 않습니다.
+## 현재 제공 범위
 
-실행 환경, V13~V15 마이그레이션, 기존 세션과의 호환 범위는
-[쇼핑몰 연동 및 실행 가이드](docs/storefront-integration.md)를 확인하세요.
-아래 초기 개발 개요보다 이 가이드의 새 이미지 흐름 설명을 우선 참고하세요.
+- 남성복·여성복 Simple 각각 10문항: 질문 정의에 따른 단일·복수·비교·순위형 선택과 NONE 배타 응답
+- 회원 소유 세션의 답변 저장·수정, revision 충돌 검사, 새로고침 복구·재개·제출
+- 실제 선택으로 생성한 Raw 관측과 직접 선호 리포트, FORM 마이페이지 기록·결과 재조회
+- Q02 R01~R12 직접 스타일 선택: 복수 선택은 동등하게 표시하며 대표 순위를 만들지 않음
+- 데모 상품 100개: 의류 범위와 Q02 스타일로 후보 선정, Q01 색상 일치 근거 제공
+- 색상 일치 상품 우선 배치. 나머지 스타일 일치 상품도 유지하고 그룹 내부는 상품 ID 순서 유지
 
+남성복 세션은 MENS·UNISEX, 여성복은 WOMENS·UNISEX만 허용합니다. 미분류 상품은 제외합니다. 현재 등록 데이터에는 UNISEX 상품이 없으며, 지원 정책과 실제 등록 수를 구분합니다.
 
-TasteDNA는 사용자의 패션 취향을 질문과 선택지 응답을 통해 관측하고, 이를 근거로 취향 분석 및 RESULT 분류를 제공하기 위한 백엔드 시스템입니다.
+**직접 선호는 최종 종합 RESULT가 아닙니다.** `preference-summary`는 `comprehensiveResult=false`, `initial-candidates`의 최종 판별은 `DEFERRED`입니다. Q02 단일 선택도 FINAL로 승격하지 않습니다. 상품 매칭은 RESULT 유형이나 이미지 URL이 아니라 등록 속성에 기반합니다.
 
-기존 패션 쇼핑몰과 연동하는 것을 주요 목표로 하며, 독립적인 쇼핑몰 전체를 개발하는 프로젝트는 아닙니다.
+## 실행
 
-## 1. 개발 목표
+Java 21, MySQL 8.4, Spring Boot 4.1.1, Spring Data JPA, Flyway를 사용합니다. Gradle Wrapper를 사용하며 최초 실행에는 의존성 다운로드가 필요합니다. Node.js는 프런트엔드 테스트에 필요합니다.
 
-TasteDNA의 기본 처리 흐름은 다음과 같습니다.
+저장소를 복제한 뒤 프로젝트 루트에서 실행하세요. `gender/` 이미지 폴더도 필요합니다. 기본 설정의 DB는 **tastedna**이므로 아래 URL 재지정 없이 테스트 서버를 실행하지 마세요. 사전에 독립 `tastedna_test` DB와 그 DB에만 권한이 있는 계정을 준비합니다. 기존 DB를 초기화하지 않습니다.
 
-질문 제공 → 사용자 답변 저장 → 선택지별 관측 규칙 조회 → Raw 관측 생성 → RESULT 후보 추출 → 근거 평가 → 최종 RESULT 판별
-
-**현재는 초기 RESULT 후보 추출과 근거 준비 상태 평가까지 일부 구현된 개발 단계입니다. 최종 RESULT 판별 기능은 완성되지 않았습니다.**
-
-## 2. 기술 스택
-
-- Java 21
-- Spring Boot 4.1.1
-- Gradle
-- MySQL 8.4
-- Spring Data JPA
-- Flyway
-- Spring Security
-- JUnit 5 / Mockito
-
-주요 개발 환경은 Windows 및 IntelliJ IDEA Ultimate입니다.
-
-## 3. 테스트 구성
-
-| 구분 | Simple | Deep |
-|---|---|---|
-| 질문 수 | 10개 | 25개 |
-| 최종 RESULT 목표 | 최대 5개 | 최대 2개 |
-
-전체 RESULT 설계 대상은 25개 후보입니다.
-
-최종 RESULT 개수를 채우기 위해 근거가 부족한 후보를 임의로 출력하지 않습니다.
-
-점수, 가중치, 판별 임계값 등은 승인된 설계와 검증을 거쳐 결정해야 합니다.
-
-## 4. 프로젝트 구조
-
-```text
-src/main/java/com/tastedna/
-├── config/       보안 및 실행 환경 설정
-├── definition/   테스트 정의 및 질문 정의
-├── session/      세션 생성, 질문 조회, 답변 저장 및 검증
-└── scoring/      직접 관측, Raw 관측, RESULT 후보 관련 기능
-
-src/main/resources/db/migration/
-                  Flyway 데이터베이스 스키마 변경
-
-src/test/
-                  단위 테스트 및 통합 테스트
-
-dev/fixtures/
-                  로컬 개발용 질문, 관측 규칙 및 RESULT 설정
-
-docs/
-                  질문·답변, 채점, 이미지 제작 관련 계약과 명세
+```powershell
+# JAVA_HOME은 자신의 Java 21 설치 경로로 지정
+$env:SPRING_DATASOURCE_URL='jdbc:mysql://localhost:3306/tastedna_test?connectionTimeZone=UTC'
+$env:DB_USERNAME=Read-Host '테스트 DB 계정'
+$secret=Read-Host '테스트 DB 비밀번호' -AsSecureString
+try {
+    $env:DB_PASSWORD=[System.Net.NetworkCredential]::new('', $secret).Password
+    $env:AUTH_COOKIE_SECURE='false' # 로컬 HTTP에서만 사용
+    .\gradlew.bat bootRun '--args=--spring.profiles.active=member-auth --server.address=127.0.0.1 --server.port=8081'
+} finally {
+    Remove-Item Env:DB_PASSWORD -ErrorAction SilentlyContinue
+    $secret=$null
+}
 ```
 
-## 5. 현재 구현 상태
+서버 기동 로그와 실제 HTTP 응답을 확인하고 http://127.0.0.1:8081 에서 FORM 회원가입 후 명시적으로 로그인합니다. Gradle 종료 메시지만으로 서버가 실행 중이라고 판단하지 않습니다. 비밀번호·쿠키·CSRF 토큰을 코드나 Git에 기록하지 마세요.
 
-### 구현된 주요 기능
+기동 시 Flyway가 V1~V25 중 미적용 마이그레이션을 적용하고 JPA가 스키마를 검증합니다. 기존 이력 파일 수정이나 Flyway clean은 사용하지 않습니다. HTTPS 배포에서는 `AUTH_COOKIE_SECURE=true`를 유지해야 합니다.
 
-- 회원별 테스트 세션 생성 및 조회
-- 기존 세션 재개
-- 단일·복수·비교 선택형 답변 검증
-- 질문별 답변 저장 및 수정
-- Revision을 통한 오래된 수정 요청 차단
-- 세션 행 잠금을 이용한 동시 변경 제어
-- 선택지별 직접 관측 규칙 조회
-- Raw 관측 데이터 생성
-- Q02 직접 스타일 선택을 이용한 초기 RESULT 후보 추출
-- 시각적 근거 메타데이터의 준비 상태 검사
-- 관련 단위 테스트 및 일부 실제 DB 통합 테스트
-
-### 아직 완료되지 않은 기능
-
-- 전체 RESULT 판별 규칙
-- 확정된 점수·가중치·임계값 기반 계산
-- 최종 RESULT 저장 및 조회 API
-- 이미지 기반 질문의 정식 이미지 연결 및 검수
-- 운영용 쇼핑몰 회원 인증 연동
-- 운영 환경용 RESULT 규칙·메타데이터 관리
-- Deep 전체 질문의 실제 구현 및 검증
-
-클래스나 데이터 구조가 존재하더라도 기능 구현이 완료됐다는 뜻은 아닙니다.
-
-## 6. 주요 API
-
-기본 경로: `/api/v1`
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| GET | `/health` | 상태 확인 |
-| POST | `/sessions` | 테스트 세션 생성 |
-| GET | `/sessions/active` | 활성 세션 조회 |
-| GET | `/sessions/{sessionId}` | 세션 조회 |
-| POST | `/sessions/{sessionId}/resume` | 세션 재개 |
-| POST | `/sessions/{sessionId}/answers` | 답변 저장·수정 |
-| GET | `/sessions/{sessionId}/questions` | 질문 목록 조회 |
-| GET | `/sessions/{sessionId}/questions/{questionId}` | 개별 질문 조회 |
-
-개발 전용 API:
-
-`GET /api/v1/sessions/{sessionId}/raw-observations`
-
-해당 API는 `dev` 프로필에 연결된 개발용 관측 확인 인터페이스이며, 정식 RESULT API가 아닙니다.
-
-## 7. 로컬 실행 환경
-
-데이터베이스 연결 설정은 `src/main/resources/application.yaml`에서 관리합니다.
-
-기본 개발 DB:
-
-```text
-tastedna
-```
-
-테스트 DB:
-
-```text
-tastedna_test
-```
-
-필요한 환경 변수:
-
-```text
-DB_USERNAME
-DB_PASSWORD
-```
-
-로컬 개발용 인증은 `local` 프로필에서 동작하며 다음 환경 변수를 사용합니다.
-
-```text
-DEV_MEMBER_PASSWORD
-```
-
-개발용 계정:
-
-```text
-dev-member-001
-dev-member-002
-```
-
-이 계정들은 쇼핑몰의 실제 회원 인증을 대체하지 않습니다.
-
-`local` 이외의 보안 설정은 기본적으로 헬스 체크 외의 API 요청을 차단합니다.
-
-개발용 DB와 테스트 DB를 혼동하지 않아야 하며, 테스트 실행 전 필요한 스키마와 fixture 데이터가 준비돼 있어야 합니다.
-
-## 8. 빌드 및 테스트
-
-Windows 프로젝트 루트에서 Gradle Wrapper를 사용합니다.
+## 개발 및 테스트
 
 ```powershell
 .\gradlew.bat compileJava
+# 변경 영역만 선택한 예시; 실제 DB에 연결하지 않는 매칭 서비스 테스트
+.\gradlew.bat test --tests 'com.tastedna.demo.DemoProductMatchServiceTest'
+node --test dev/verification/assessment-state.test.mjs
 ```
 
-전체 테스트:
+전체 Java 테스트 명령은 `.\gradlew.bat test`입니다. 선택적 MySQL 테스트가 건너뛰어졌다면 DB 검증 성공이 아닙니다. 실제 DB 검증에는 별도 환경변수와 테스트 계정 제약이 있습니다. [실행·연동 가이드](docs/storefront-integration.md)의 테스트 절을 먼저 확인하세요. `--offline`은 의존성이 이미 캐시된 환경에서만 추가합니다.
 
-```powershell
-.\gradlew.bat test
-```
+## 구현·검증 상태
 
-통합 테스트에는 MySQL 테스트 DB와 사전 준비된 개발 데이터가 필요할 수 있습니다.
+| 범위 | 현재 상태 |
+|---|---|
+| 남녀 Simple 저장·복구·제출·리포트·마이페이지 | 실제 FORM 브라우저 대표 흐름 확인(15-A2·15-A3) |
+| MySQL V25·JPA·회원 인증 통합 | 로컬 통합 테스트 재실행 성공 사용자 확인(15-A1F 후속) |
+| Q02 스타일·Q01 색상 근거 표시 | 남녀 완료 세션 브라우저 확인 |
+| Q01 색상 일치 우선 정렬 | Java 매칭 테스트 10개 통과(15-T3B3); 변경 후 실제 브라우저·MySQL 순서 확인은 미실행 |
+| 소유권·의류 범위·UNISEX·미분류 경계 | 관련 자동 테스트 보유; 15-A3 브라우저에서 타인 접근과 상품 범위 DB 대조는 미검증 |
+| 종합 RESULT R01~R25 확정, Deep 25문항 | 미완성; 직접 선호 결과와 구분 |
+| 외부 쇼핑몰 인증·상품 시스템 자동 연결, 운영 배포 | 별도 통합 필요. SDK·설치 플러그인·자동 연동 API 없음 |
 
-일부 테스트는 개발용 fixture 또는 고정된 세션 데이터를 참조하므로 독립 실행 가능 여부를 확인해야 합니다.
+점수·매치율·추천 정확도를 검증한 서비스로 설명하지 않습니다. 주문·결제·배송, 이메일 인증·비밀번호 재설정, 분산 세션 운영도 구현 범위 밖입니다.
 
-테스트가 실패했다고 해서 실제 개발 DB 데이터를 임의로 수정하거나 초기화하지 않습니다.
+## 문서와 구조
 
-## 9. RESULT 개발 원칙
+- [외부 쇼핑몰 실행·연동 경계](docs/storefront-integration.md)
+- [회원 인증·CSRF 계약 및 구현 이력](docs/member-auth-contract.md), [FORM 인증 화면 연결](docs/form-frontend-auth.md)
+- [질문·답변 계약](docs/question-answer-contract.md), [순위형 계약](docs/ranked-comparison-contract.md)
+- [초기 후보 API](docs/simple-initial-candidates-api.md), [최종 판별에 남은 승인 조건](docs/simple-result-finalization-gaps.md)
+- [상품 매칭 API](docs/demo-product-matching-api.md), [의류 범위 근거](docs/demo-catalog-apparel-scope.md), [색상 근거](docs/demo-catalog-colors.md)
 
-1. 직접 관측과 추론을 구분합니다.
-2. 사용자가 선택하지 않은 항목을 자동으로 부정적 취향으로 해석하지 않습니다.
-3. 비교형 질문의 상대적 선호 관계를 보존합니다.
-4. 관측 근거 없이 RESULT를 확정하지 않습니다.
-5. 미확정 점수·가중치·임계값을 임의로 만들지 않습니다.
-6. 테스트 정의와 질문·선택지 ID의 버전 정합성을 유지합니다.
-7. 동일한 입력과 동일한 판별 규칙은 재현 가능한 결과를 생성해야 합니다.
-
-현재 초기 후보 추출은 Q02의 명시적 스타일 선호 관측을 기반으로 합니다.
-
-Q05·Q08·Q09·Q10의 시각적 근거는 추가 메타데이터 검증이 필요하며, 현재 최종 RESULT 준비 상태는 완료로 표시되지 않습니다.
-
-## 10. 개발자 및 AI 에이전트 작업 지침
-
-개발을 시작하기 전에 다음 자료를 확인합니다.
-
-- `AGENTS.md`: 프로젝트 개발 원칙 및 AI 작업 규칙
-- `docs/question-answer-contract.md`: 질문 및 답변 계약
-- `docs/scoring-contract.md`: 관측·채점·RESULT 설계 원칙
-- `docs/image-production-spec.md`: 이미지 제작 및 검수 기준
-- `dev/fixtures/`: 개발용 질문·관측·RESULT 설정
-- 실제 Java 구현 및 테스트
-
-AI 또는 외부 개발자는 기존 구현을 확인한 후 변경해야 합니다.
-
-승인되지 않은 RESULT 계산 공식, 점수, 판별 조건을 새로 만들지 않습니다.
-
-Java 코드에는 유지보수에 필요한 역할, 설계 의도 및 중요한 제약을 중심으로 한글 주석을 사용합니다. 단순 코드에 불필요한 주석을 반복하지 않습니다.
-
-## 11. 다음 개발 방향
-
-현재 우선 검토할 개발 작업은 다음과 같습니다.
-
-1. RESULT 초기 후보와 직접 관측 근거의 연결
-2. 후보별 근거 추적 및 설명 가능성 강화
-3. 이미지 기반 근거 검증 및 메타데이터 확정
-4. 승인된 RESULT 판별 규칙 구현
-5. 최종 RESULT 저장 및 조회 기능
-6. 쇼핑몰 연동 및 운영 환경 준비
-
-구체적인 구현 순서는 최신 코드와 승인된 설계 문서를 기준으로 결정합니다.
-
----
-
-이 문서는 현재 개발 상태를 설명하는 프로젝트 진입점입니다. 세부 설계와 실제 동작은 승인된 설계 문서 및 최신 소스 코드를 함께 확인해야 합니다.
+`definition`은 질문 정의, `session`은 세션·답변, `scoring`은 관측·후보, `member`는 FORM 회원, `demo`는 데모 상품, `config`는 보안·자산 설정입니다. DB 변경은 `src/main/resources/db/migration`, 독립 검증 자료는 `dev/fixtures`에 있습니다. 수정 시 [AGENTS.md](AGENTS.md)와 승인된 질문 계약을 준수하세요.
