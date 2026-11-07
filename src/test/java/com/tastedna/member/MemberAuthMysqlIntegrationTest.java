@@ -53,17 +53,22 @@ class MemberAuthMysqlIntegrationTest {
     // 기존 테스트 DB 사전 확인을 재사용하며 카탈로그를 읽기만 한다.
     @Test
     @Transactional
-    void demoCatalogV22HasExpectedStyleCoverage() {
-        assertEquals("22", flyway.info().current().getVersion().getVersion());
+    void demoCatalogV25HasExpectedStyleCoverage() {
+        assertEquals("25", flyway.info().current().getVersion().getVersion());
         assertTrue(flyway.validateWithResult().validationSuccessful);
         var catalog = demoProducts.findAllByOrderByDisplayOrderAsc();
         assertEquals(100, catalog.size());
         assertEquals(100, catalog.stream().map(DemoProduct::getProductId).distinct().count());
         assertEquals(100, catalog.stream().map(DemoProduct::getImageUrl).distinct().count());
         assertEquals(26, catalog.stream().filter(p -> p.getStyleCodes().isEmpty()).count());
+        assertEquals(29, catalog.stream().filter(p -> p.getApparelScope() == DemoProduct.ApparelScope.MENS).count());
+        assertEquals(71, catalog.stream().filter(p -> p.getApparelScope() == DemoProduct.ApparelScope.WOMENS).count());
+        assertEquals(70, catalog.stream().filter(p -> !p.getColorCodes().isEmpty()).count());
+        assertEquals(30, catalog.stream().filter(p -> p.getColorCodes().isEmpty()).count());
         var allowed = new HashSet<String>();
         for (int i = 1; i <= 12; i++) allowed.add("R%02d".formatted(i));
         for (var product : catalog) {
+            assertTrue(product.getColorCodes().stream().allMatch(c -> c.matches("[A-O]")));
             assertTrue(allowed.containsAll(product.getStyleCodes()));
             assertTrue(product.getImageUrl().startsWith("/assets/gender/"));
             assertTrue(Files.isRegularFile(Path.of(product.getImageUrl().substring(8))));
@@ -279,6 +284,37 @@ class MemberAuthMysqlIntegrationTest {
         mvc.perform(get("/api/v1/sessions/" + id + "/preference-summary").session(b.session()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DIRECT_PREFERENCE_SUMMARY"));
         mvc.perform(get("/api/v1/sessions/" + id + "/preference-summary").session(a.session())).andExpect(status().isNotFound());
+        String matchingPath = "/api/v1/sessions/" + id + "/matched-demo-products";
+        mvc.perform(get(matchingPath).session(a.session())).andExpect(status().isNotFound());
+        String matching = mvc.perform(get(matchingPath).session(b.session())).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertEquals(mapper.readTree(matching), mapper.readTree(mvc.perform(get(matchingPath).session(b.session()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()));
+        var expectedIds = demoProducts.findMatchingStyles(Set.of("R01")).stream()
+                .filter(p -> p.getApparelScope() == DemoProduct.ApparelScope.UNISEX
+                        || p.getApparelScope() != null && p.getApparelScope().name().equalsIgnoreCase(scope))
+                .map(DemoProduct::getProductId).sorted().toList();
+        List<String> actualIds = new ArrayList<>();
+        boolean hasColor = false;
+        for (var product : mapper.readTree(matching).path("products")) {
+            actualIds.add(product.path("id").asString());
+            boolean hasStyle = false;
+            for (var fact : product.path("evidence")) {
+                if ("Q02".equals(fact.path("questionId").asString())) {
+                    hasStyle = true;
+                    assertEquals("R01", fact.path("styleCode").asString());
+                } else {
+                    assertEquals("Q01", fact.path("questionId").asString());
+                    assertEquals("A", fact.path("colorCode").asString());
+                    assertEquals("블랙", fact.path("colorLabel").asString());
+                    hasColor = true;
+                }
+            }
+            assertTrue(hasStyle);
+        }
+        assertEquals(expectedIds, actualIds); // 색상 불일치·미등록이어도 스타일 후보가 유지된다.
+        assertFalse(actualIds.isEmpty());
+        assertTrue(hasColor);
         mvc.perform(get("/api/v1/sessions/" + id + "/answers").session(b.session()))
                 .andExpect(status().isOk());
         for (var browser : List.of(a, b)) {

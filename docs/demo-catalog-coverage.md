@@ -42,7 +42,7 @@ $env:RUN_MEMBER_MYSQL_TESTS = 'true'
 $credential = Get-Credential -UserName 'coql' -Message 'tastedna_test 비밀번호 입력'
 try {
     $env:DB_PASSWORD = $credential.GetNetworkCredential().Password
-    .\gradlew.bat test --tests com.tastedna.member.MemberAuthMysqlIntegrationTest.demoCatalogV22HasExpectedStyleCoverage --rerun-tasks --offline
+    .\gradlew.bat test --tests com.tastedna.member.MemberAuthMysqlIntegrationTest.demoCatalogV25HasExpectedStyleCoverage --rerun-tasks --offline
 } finally {
     Remove-Item Env:DB_PASSWORD, Env:RUN_MEMBER_MYSQL_TESTS -ErrorAction SilentlyContinue
     $credential = $null
@@ -51,3 +51,14 @@ try {
 
 DB 테스트는 V22 적용·실제 JPA 카탈로그 수·태그·경로와 스타일별 Repository 조회를 검증한다.
 Raw 매칭 서비스의 12개 스타일별 결과·재현성·다른 이미지 및 불일치 제외는 별도 단위 테스트로 검증한다.
+
+## V25 다속성 검증 — 15-A1
+
+위 명령은 현재 V25·상품 100개·MENS 29/WOMENS 71·색상 등록 70/미등록 30과 JPA 매핑을 검증한다. UNISEX와 범위 미분류는 실제 등록 상품이 없어 단위 테스트로만 검증한다.
+남녀 제출·추천 API까지 확인하려면 같은 로컬 환경에서 Gradle 명령을 다음으로 대체한다. 새 mysql-a/mysql-b UUID 테스트 회원과 세션을 tastedna_test에 추가하며 기존 행은 보존한다.
+
+```powershell
+.\gradlew.bat test --tests com.tastedna.member.MemberAuthMysqlIntegrationTest.demoCatalogV25HasExpectedStyleCoverage --tests com.tastedna.member.MemberAuthMysqlIntegrationTest.realMembersCompleteImageFlowWhileCrossMemberReadsAndWritesAreDenied --rerun-tasks --offline
+```
+
+Codex 실행 환경에는 DB_USERNAME/DB_PASSWORD가 없어 실제 DB 검증을 실행하지 못했다. 브라우저는 FORM 로그인 화면이므로 카드·더 보기·색상 근거·마이페이지 재진입도 미검증이다. 실행 후 build/test-results/test/TEST-com.tastedna.member.MemberAuthMysqlIntegrationTest.xml에서 실패 0뿐 아니라 skipped 0과 실제 실행 건수를 확인해야 한다. BUILD SUCCESSFUL만으로 MySQL 통과로 판단하지 않는다.
