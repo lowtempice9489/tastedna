@@ -17,6 +17,38 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DemoProductMatchServiceTest {
+    @Test void colorsAddEvidenceWithoutChangingCandidatesOrOrder() throws Exception {
+        var q = ImageDefinitionTest.questions().get("Q01");
+        when(answers.findById(new SessionAnswerId(id.toString(), "Q01"))).thenReturn(Optional.of(new SessionAnswer(
+                id.toString(), "Q01", "{\"selectedOptionIds\":[\"B\",\"A\"]}", q.toString(), 3, LocalDateTime.now())));
+        var color = new RawObservationAggregator.RawObservation(definition.toString(), "DIRECT_COLOR_PREFERENCE",
+                "블랙", "EXPLICIT_SELECTION", "Q01", "A", 3);
+        var wrongRevision = new RawObservationAggregator.RawObservation(definition.toString(), "DIRECT_COLOR_PREFERENCE",
+                "화이트·아이보리", "EXPLICIT_SELECTION", "Q01", "B", 2);
+        var wrongDefinition = new RawObservationAggregator.RawObservation(UUID.randomUUID().toString(), "DIRECT_COLOR_PREFERENCE",
+                "화이트·아이보리", "EXPLICIT_SELECTION", "Q01", "B", 3);
+        when(observations.collectRaw("member", id.toString())).thenReturn(Map.of(
+                "DIRECT_FASHION_LOOK_PREFERENCE", List.of(raw("R01", "미니멀", definition.toString(), 2)),
+                "DIRECT_COLOR_PREFERENCE", List.of(color, color, wrongRevision, wrongDefinition)));
+        var both = product(Set.of("R01"));
+        var different = product(Set.of("R01"));
+        var missing = product(Set.of("R01"));
+        var colorOnly = product(Set.of("R02"));
+        when(both.getProductId()).thenReturn("a");when(both.getColorCodes()).thenReturn(Set.of("A", "B"));
+        when(different.getProductId()).thenReturn("b");when(different.getColorCodes()).thenReturn(Set.of("G"));
+        when(missing.getProductId()).thenReturn("c");
+        when(colorOnly.getColorCodes()).thenReturn(Set.of("A"));
+        when(products.findMatchingStyles(any())).thenReturn(List.of(missing, different, colorOnly, both));
+        var result = service.match("member", id);
+        assertEquals(List.of("a", "b", "c"), result.products().stream().map(DemoProductMatchService.Product::id).toList());
+        assertEquals(2, result.products().getFirst().evidence().size());
+        assertEquals("A", result.products().getFirst().evidence().get(1).colorCode());
+        assertNull(result.products().getFirst().evidence().get(1).styleCode());
+        assertEquals(1, result.products().get(1).evidence().size());
+        assertEquals(1, result.products().get(2).evidence().size());
+        assertEquals(result, service.match("member", id));
+        verify(observations, times(2)).collectRaw("member", id.toString());
+    }
     @Test void registeredCatalogMatchesOnlySessionScopeAndSelectedRawStyle() throws Exception {
         var catalog = DemoCatalogTest.scopedCatalog();
         when(products.findMatchingStyles(any())).thenReturn(catalog);

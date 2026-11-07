@@ -24,7 +24,12 @@ public class DemoProductMatchService {
     private final DemoProductRepository products;
     private final JsonMapper mapper;
 
-    public record Evidence(String questionId, String optionId, String observationType, long answerRevision, String styleCode, String styleLabel) {}
+    public record Evidence(String questionId, String optionId, String observationType, long answerRevision,
+                           String styleCode, String styleLabel, String colorCode, String colorLabel) {
+        public Evidence(String questionId, String optionId, String observationType, long answerRevision, String styleCode, String styleLabel) {
+            this(questionId, optionId, observationType, answerRevision, styleCode, styleLabel, null, null);
+        }
+    }
     public record Product(String id, String name, String imageUrl, int price, boolean demo, List<Evidence> evidence) {}
     public record Response(UUID sessionId, UUID definitionId, long revision, String matchType, List<Product> products) {}
 
@@ -43,7 +48,8 @@ public class DemoProductMatchService {
         for (var option : question.path("options"))
             labels.put(option.path("id").asString(), option.path("label").asString());
         Map<String, Evidence> evidence = new TreeMap<>();
-        for (var observation : observations.collectRaw(member, id.toString())
+        var raw = observations.collectRaw(member, id.toString());
+        for (var observation : raw
                 .getOrDefault("DIRECT_FASHION_LOOK_PREFERENCE", List.of())) {
             String code = observation.optionId();
             String label = STYLES.get(code);
@@ -55,15 +61,37 @@ public class DemoProductMatchService {
                     && answer.getAnswerRevision() == observation.answerRevision() && selected.contains(code))
                 evidence.put(code, new Evidence("Q02", code, observation.type(), observation.answerRevision(), code, label));
         }
+        Map<String, Evidence> colors = new TreeMap<>();
+        var colorAnswer = answers.findById(new SessionAnswerId(id.toString(), "Q01"));
+        if (colorAnswer.isPresent()) {
+            var saved = colorAnswer.get();
+            var colorSelected = MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(saved.getAnswerPayload()));
+            Map<String, String> colorLabels = new HashMap<>();
+            for (var option : mapper.readTree(saved.getPresentedPayload()).path("options"))
+                colorLabels.put(option.path("id").asString(), option.path("label").asString());
+            for (var observation : raw.getOrDefault("DIRECT_COLOR_PREFERENCE", List.of())) {
+                String code = observation.optionId(), label = COLORS.get(code);
+                if (label != null && label.equals(colorLabels.get(code)) && label.equals(observation.observedValue())
+                        && session.definitionId().toString().equals(observation.definitionId())
+                        && "Q01".equals(observation.questionId()) && "DIRECT_COLOR_PREFERENCE".equals(observation.type())
+                        && "EXPLICIT_SELECTION".equals(observation.evidence())
+                        && saved.getAnswerRevision() == observation.answerRevision() && colorSelected.contains(code))
+                    colors.put(code, new Evidence("Q01", code, observation.type(), observation.answerRevision(), null, null, code, label));
+            }
+        }
         List<Product> matched = evidence.isEmpty() ? List.of() : products.findMatchingStyles(evidence.keySet()).stream()
                 .filter(p -> session.apparelScope() != null && p.getApparelScope() != null
                         && (p.getApparelScope() == DemoProduct.ApparelScope.UNISEX
                         || p.getApparelScope().name().equals(session.apparelScope().name().toUpperCase(Locale.ROOT))))
                 .sorted(Comparator.comparing(DemoProduct::getProductId))
-                .map(p -> new Product(p.getProductId(), p.getName(), p.getImageUrl(), p.getPrice(), true,
-                        evidence.entrySet().stream().filter(e -> p.getStyleCodes().contains(e.getKey()))
-                                .map(Map.Entry::getValue).toList()))
-                .filter(p -> !p.evidence().isEmpty()).toList();
+                .filter(p -> p.getStyleCodes().stream().anyMatch(evidence::containsKey))
+                .map(p -> {
+                    var matchedEvidence = new ArrayList<>(evidence.entrySet().stream()
+                            .filter(e -> p.getStyleCodes().contains(e.getKey())).map(Map.Entry::getValue).toList());
+                    // 색상은 추가 설명일 뿐 스타일 후보의 포함 여부나 순서를 바꾸지 않는다.
+                    colors.forEach((code, fact) -> { if (p.getColorCodes().contains(code)) matchedEvidence.add(fact); });
+                    return new Product(p.getProductId(), p.getName(), p.getImageUrl(), p.getPrice(), true, List.copyOf(matchedEvidence));
+                }).toList();
         return new Response(id, session.definitionId(), session.revision(), "EXPLICIT_STYLE_ATTRIBUTE", matched);
     }
 
@@ -73,4 +101,10 @@ public class DemoProductMatchService {
             Map.entry("R04", "프레피"), Map.entry("R05", "캐주얼"), Map.entry("R06", "스포티"),
             Map.entry("R07", "스트릿"), Map.entry("R08", "빈티지·레트로"), Map.entry("R09", "로맨틱"),
             Map.entry("R10", "보헤미안"), Map.entry("R11", "에지·그런지"), Map.entry("R12", "글램·화려함"));
+    private static final Map<String, String> COLORS = Map.ofEntries(
+            Map.entry("A", "블랙"), Map.entry("B", "화이트·아이보리"), Map.entry("C", "그레이·실버"),
+            Map.entry("D", "베이지·크림"), Map.entry("E", "브라운·카멜"), Map.entry("F", "네이비"),
+            Map.entry("G", "블루"), Map.entry("H", "그린·올리브"), Map.entry("I", "레드·버건디"),
+            Map.entry("J", "핑크"), Map.entry("K", "퍼플"), Map.entry("L", "옐로·머스터드"),
+            Map.entry("M", "오렌지·코랄"), Map.entry("N", "파스텔 계열"), Map.entry("O", "선명하고 밝은 색 계열"));
 }

@@ -161,7 +161,7 @@ test('mens and womens report keeps products near summary, four at a time, and de
    {questionId:'Q02',prompt:'스타일',selections:[{optionId:'R01',label:'미니멀',images:[]}]},
    {questionId:'Q09',comparisonId:'C02',prompt:'순위',selections:[{label:'B',rank:1,images:['/assets/gender/female/Q09/B.png']},{label:'A',rank:2,images:[]}],notPreferred:[{label:'C'}]}
   ]};
-  context.matched={products:Array.from({length:9},(_,i)=>({id:'p'+i,name:'상품 '+i,imageUrl:'/assets/gender/female/Q06/product-'+i+'.png',price:59000,evidence:[{questionId:'Q02',optionId:'R01',styleCode:'R01',styleLabel:'미니멀'}]}))};
+  context.matched={products:Array.from({length:9},(_,i)=>({id:'p'+i,name:'상품 '+i,imageUrl:'/assets/gender/female/Q06/product-'+i+'.png',price:59000,evidence:[{questionId:'Q02',optionId:'R01',styleCode:'R01',styleLabel:'미니멀'},{questionId:'Q01',optionId:'A',colorCode:'A',colorLabel:'블랙'}]}))};
   vm.runInContext("main.append=()=>{};session={sessionId:'saved'};api=async path=>path.endsWith('/preference-summary')?data:matched",context);
   await vm.runInContext('result()',context);
   const html=vm.runInContext('main.innerHTML',context);
@@ -174,7 +174,7 @@ test('mens and womens report keeps products near summary, four at a time, and de
   assert.match(html,/src="\/assets\/gender\/female\/Q09\/B.png"/);
   const products=sections.find(e=>e.className==='matched-products');
   const count=()=> (products.innerHTML.match(/class="matched-product-card"/g)||[]).length;
-  assert.equal(count(),4);assert.match(products.innerHTML,/Q02 · R01 · 미니멀 \(R01\)/);
+  assert.equal(count(),4);assert.match(products.innerHTML,/Q01 · A · 색상 블랙 \(A\)/);assert.match(products.innerHTML,/Q02 · R01 · 미니멀 \(R01\)/);
   more.onclick();assert.equal(count(),8);
   more.onclick();assert.equal(count(),9);assert.doesNotMatch(products.innerHTML,/id="more-products"/);
  }
