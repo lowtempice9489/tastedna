@@ -5,6 +5,7 @@ import com.tastedna.scoring.persistence.ResultCandidateRepository;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.domain.SessionAnswerId;
 import com.tastedna.session.persistence.SessionAnswerRepository;
+import com.tastedna.session.application.multi.MultiChoiceAnswerPayloadExtractor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -35,7 +36,8 @@ public class SimpleInitialCandidateService {
                             CandidateEvidence evidence) {}
     public record Decision(String status, List<Candidate> results, List<String> missingRequirements) {}
     public record Response(UUID sessionId, UUID definitionId, long revision, String status,
-                           boolean finalResult, List<Candidate> candidates, Decision decision) {}
+                           boolean finalResult, List<Candidate> candidates, Decision decision,
+                           Candidate simpleRepresentative) {}
 
     @Transactional(readOnly = true)
     public Response find(String memberId, UUID sessionId) {
@@ -83,8 +85,13 @@ public class SimpleInitialCandidateService {
         missing.addAll(List.of("VERIFIED_CANDIDATE_EVIDENCE_MAPPING",
                 "NEGATIVE_AND_RANKED_EVIDENCE_INTERPRETATION",
                 "CANDIDATE_DISCRIMINATION_RULE", "FINALIZATION_RULE"));
+        var selected = MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(answer.getAnswerPayload()));
+        // 최신 단일 직접 선택만 Simple 대표로 표시하며 종합 RESULT의 보류 상태는 유지한다.
+        Candidate representative = selected.size() == 1 && result.size() == 1
+                && result.getFirst().sources().stream().allMatch(s -> selected.contains(s.optionId())
+                && s.answerRevision() == answer.getAnswerRevision()) ? result.getFirst() : null;
         return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", false,
-                List.copyOf(result), new Decision("DEFERRED", List.of(), List.copyOf(missing)));
+                List.copyOf(result), new Decision("DEFERRED", List.of(), List.copyOf(missing)), representative);
     }
 
     // 관측 사실을 한 번씩 보존한다. 순위는 해당 비교 그룹 안에서만 유효하다.

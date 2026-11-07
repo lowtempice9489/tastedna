@@ -78,7 +78,7 @@ test('report renders supplied evidence only and preserves revisit, restart and s
  await vm.runInContext('result()',context);
  const revisited=vm.runInContext('main.innerHTML',context);
  assert.match(revisited,/재조회한 서버 제목/);assert.doesNotMatch(revisited,/실제 선택 스타일|피하고 싶은 착장이 없었어요/);
- assert.equal(vm.runInContext('requests.join(",")',context),'/sessions/saved/preference-summary,/sessions/saved/matched-demo-products,/sessions/saved/preference-summary,/sessions/saved/matched-demo-products');
+ assert.equal(vm.runInContext('requests.join(",")',context),'/sessions/saved/preference-summary,/sessions/saved/initial-candidates,/sessions/saved/matched-demo-products,/sessions/saved/preference-summary,/sessions/saved/initial-candidates,/sessions/saved/matched-demo-products');
 });
 test('rank badges, review, result and download preserve saved ranking',async()=>{
  const context=renderer();
@@ -177,5 +177,20 @@ test('mens and womens report keeps products near summary, four at a time, and de
   assert.equal(count(),4);assert.match(products.innerHTML,/Q01 · A · 색상 블랙 \(A\)/);assert.match(products.innerHTML,/Q02 · R01 · 미니멀 \(R01\)/);
   more.onclick();assert.equal(count(),8);
   more.onclick();assert.equal(count(),9);assert.doesNotMatch(products.innerHTML,/id="more-products"/);
+ }
+});
+
+test('Simple representative is separate from comprehensive result and optional',async()=>{
+ for(const representative of [{sources:[{optionLabel:'미니멀'}]},null]){
+  const context=renderer();
+  context.document.createElement=()=>({setAttribute(){},querySelector:()=>({})});
+  context.data={title:'직접 선택 스타일',description:'',session:{status:'SUBMITTED',definitionId:'def',revision:2},evidence:[]};
+  context.initial={sessionId:'saved',definitionId:'def',revision:2,simpleRepresentative:representative};
+  vm.runInContext("main.append=()=>{};session={sessionId:'saved'};api=async path=>path.endsWith('/preference-summary')?data:path.endsWith('/initial-candidates')?initial:{products:[]}",context);
+  await vm.runInContext('result()',context);
+  const html=vm.runInContext('main.innerHTML',context);
+  if(representative){assert.match(html,/Simple 대표 스타일/);assert.match(html,/<h2>미니멀<\/h2>/);}
+  else assert.doesNotMatch(html,/Simple 대표 스타일/);
+  assert.match(html,/종합 유형은 아직 확정하지 않습니다/);
  }
 });

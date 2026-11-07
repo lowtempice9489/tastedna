@@ -79,6 +79,7 @@ class SimpleInitialCandidateServiceTest {
         assertEquals(List.of("R01", "R03", "R08", "R12"), result.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
         assertEquals(result, service.find("member", id));
         assertFalse(result.finalResult());
+        assertNull(result.simpleRepresentative());
         assertEquals("DEFERRED", result.decision().status());
         assertTrue(result.decision().results().isEmpty());
         assertTrue(result.decision().missingRequirements().contains("CANDIDATE_DISCRIMINATION_RULE"));
@@ -98,9 +99,9 @@ class SimpleInitialCandidateServiceTest {
     }
     @Test void sharedContractWorksWithAnotherDefinitionWithoutGenderAlgorithm() {
         UUID futureDefinition = UUID.randomUUID();
-        session(futureDefinition, "SUBMITTED");
+        when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, ApparelScope.womens, "SUBMITTED", 10, futureDefinition, null));
         select(futureDefinition, "R02");
-        assertEquals("R02", service.find("member", id).candidates().getFirst().candidateId());
+        assertEquals("R02", service.find("member", id).simpleRepresentative().candidateId());
         assertEquals("DEFERRED", service.find("member", id).decision().status());
     }
     @Test void storedAnswerFlowsThroughRealObservationCollectorAndCandidateExtractor() throws Exception {
@@ -139,7 +140,7 @@ class SimpleInitialCandidateServiceTest {
                 .thenReturn(Map.of("R02", rules.get("R02")));
         var updated = realService.find("member", id);
         assertEquals(List.of("R02"), updated.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
-        assertEquals(3, updated.candidates().getFirst().sources().getFirst().answerRevision());
+        assertEquals(3, updated.simpleRepresentative().sources().getFirst().answerRevision());
         assertTrue(updated.candidates().getFirst().evidence().unresolved().isEmpty());
         assertEquals("DEFERRED", updated.decision().status());
         assertFalse(updated.finalResult());
@@ -149,16 +150,19 @@ class SimpleInitialCandidateServiceTest {
     @Test void excludesUnknownMismatchedAndIndirectEvidenceAndMissingCatalog() {
         select(definition, "UNKNOWN");
         assertTrue(service.find("member", id).candidates().isEmpty());
+        assertNull(service.find("member", id).simpleRepresentative());
         assertTrue(service.find("member", id).decision().missingRequirements().contains("MAPPED_DIRECT_PREFERENCE_EVIDENCE"));
         for (String evidence : List.of("EXPLICIT_SELECTION", "INFERRED")) {
             when(observations.collectRaw("member", id.toString())).thenReturn(Map.of("DIRECT_FASHION_LOOK_PREFERENCE", List.of(
                     new RawObservationAggregator.RawObservation(definition.toString(), "DIRECT_FASHION_LOOK_PREFERENCE",
                             evidence.equals("INFERRED") ? label("R01") : "different meaning", evidence, "Q02", "R01", 2))));
             assertTrue(service.find("member", id).candidates().isEmpty());
+        assertNull(service.find("member", id).simpleRepresentative());
         }
         select(definition, "R01");
         when(catalog.findByCandidateIdIn(any())).thenReturn(List.of());
         assertTrue(service.find("member", id).candidates().isEmpty());
+        assertNull(service.find("member", id).simpleRepresentative());
     }
     @Test void neverInventsPriorityToTruncateMoreThanFiveCandidates() {
         select(definition, "R01", "R02", "R03", "R04", "R05");
