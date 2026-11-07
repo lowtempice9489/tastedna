@@ -243,23 +243,39 @@ test('mypage hides inaccessible recent record and clears screen on expired login
 });
 
 test('saved history opens the actual report and matching API after in-memory state is cleared',async()=>{
+ for(const scope of ['mens','womens'])for(const labels of [['미니멀'],['미니멀','모던'],[]]){
+ let previousHtml;
+ for(let reload=0;reload<2;reload++){
  const {run,node,calls,client}=screen();
- const saved={sessionId:'persisted',mode:'SIMPLE',apparelScope:'womens',status:'SUBMITTED',definitionId:'def',revision:10,submittedAt:'2026-01-01T00:00:00Z'};
+ const saved={sessionId:'persisted',mode:'SIMPLE',apparelScope:scope,status:'SUBMITTED',definitionId:'def',revision:10,submittedAt:'2026-01-01T00:00:00Z'};
+ const selections=labels.map((label,i)=>({optionId:'R0'+(i+1),label,images:[]}));
  client.request=async(path,body)=>{
   calls.push([path,body]);
   if(path==='/sessions/history')return [saved];
   if(path.endsWith('/answers'))return {session:saved,answers:{}};
   if(path.endsWith('/questions'))return {questions:[]};
-  if(path.endsWith('/preference-summary'))return {session:saved,title:'직접 선택 리포트',description:'',evidence:[]};
+  if(path.endsWith('/preference-summary'))return {session:saved,title:'직접 선택 리포트',description:'',evidence:[{questionId:'Q02',prompt:'스타일',selections}]};
+  if(path.endsWith('/initial-candidates'))return {...saved,finalResult:false,decision:{status:'DEFERRED',results:[]},simpleRepresentative:labels.length===1?{candidateId:'R01',sources:[{questionId:'Q02',optionId:'R01',optionLabel:labels[0],answerRevision:10}]}:null};
   if(path.endsWith('/matched-demo-products'))return {products:[]};
   throw new Error(path);
  };
  run("member={email:'a@example.test'};session=null");
  await run('openMyPage()');
  node('#report-products').scrollIntoView=()=>{node('#report-products').scrolled=true;};
- node('#mypage-products').onclick();await settle();
- assert.match(node('main').innerHTML,/직접 선택 리포트/);
+ node(reload?'#mypage-saved-0':'#mypage-products').onclick();await settle();
+ const html=node('main').innerHTML;
+ if(labels.length===1){assert.match(html,/Simple 대표 스타일/);assert.match(html,/<h2>미니멀<\/h2>/);}
+ else{assert.doesNotMatch(html,/Simple 대표 스타일/);assert.match(html,/직접 선택 리포트/);}
+ for(const label of labels)assert.ok(html.includes('<span class="chip">'+label+'</span>'));
+ assert.match(html,/종합 유형은 아직 확정하지 않습니다/);
+ assert.match(html,/<details class="report-history">/);
+ assert.doesNotMatch(html,/1위|2위/);
+ assert.ok(calls.some(([p])=>p==='/sessions/persisted/initial-candidates'));
  assert.ok(calls.some(([p])=>p==='/sessions/persisted/matched-demo-products'));
- assert.equal(node('#report-products').scrolled,true);
+ if(!reload)assert.equal(node('#report-products').scrolled,true);
+ if(reload)assert.equal(html,previousHtml);
+ previousHtml=html;
  assert.ok(!calls.some(([p])=>p.endsWith('/resume')));
+ }
+ }
 });
