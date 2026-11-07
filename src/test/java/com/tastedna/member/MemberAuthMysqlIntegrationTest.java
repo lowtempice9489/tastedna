@@ -163,9 +163,9 @@ class MemberAuthMysqlIntegrationTest {
         }
     }
 
-    @Test void flywayAndJpaSchemaValidationReachV19() {
-        assertEquals("19", flyway.info().current().getVersion().getVersion());
-        assertEquals(19, flyway.info().applied().length);
+    @Test void flywayAndJpaSchemaValidationReachV25() {
+        assertEquals("25", flyway.info().current().getVersion().getVersion());
+        assertEquals(25, flyway.info().applied().length);
         assertTrue(flyway.validateWithResult().validationSuccessful);
         // EntityManagerFactory 기동 시 전체 매핑 validate가 실행되며 이 조회도 실제 JPA를 사용한다.
         assertNotNull(members.findByEmail("missing-" + UUID.randomUUID() + "@example.test"));
