@@ -63,8 +63,8 @@ function home(){
  <article><span class="guide-number">01 / EXPLORE</span><div class="guide-symbol" aria-hidden="true">◌</div><h3>탐색할 취향 선택</h3><p>살펴보고 싶은 의류를 선택해요.<br>남성복·여성복 Simple 테스트를 이용할 수 있어요.</p></article>
  <article><span class="guide-number">02 / CHOOSE</span><div class="guide-symbol" aria-hidden="true">≡</div><h3>마음이 가는 쪽으로</h3><p>10개의 질문에 답하며 색, 스타일,<br>디테일에 대한 선호를 알려주세요.</p></article>
  <article><span class="guide-number">03 / DISCOVER</span><div class="guide-symbol" aria-hidden="true">◎</div><h3>나의 취향 기록 확인</h3><p>직접 고른 선택과 그 근거를<br>하나의 선호 요약으로 돌아보세요.</p></article>
- <article><span class="guide-number">04 / BROWSE</span><div class="guide-symbol" aria-hidden="true">↗</div><h3>새로운 시선으로 탐색</h3><p>발견한 취향을 떠올리며<br>FORM의 데모 컬렉션을 둘러보세요.</p></article>
- </div><p class="guide-footnote">종합 취향 유형 판별이나 맞춤 상품 추천이 아닌, 직접 선택한 선호를 기록하는 서비스입니다.</p></section>
+ <article><span class="guide-number">04 / BROWSE</span><div class="guide-symbol" aria-hidden="true">↗</div><h3>새로운 시선으로 탐색</h3><p>직접 고른 스타일과 연결된<br>FORM 전시 상품을 살펴보세요.</p></article>
+ </div><p class="guide-footnote">직접 선택한 스타일과 색상을 바탕으로 FORM 전시 상품을 연결해드려요. 종합 취향 유형은 아직 확정하지 않습니다.</p></section>
  </div>`;
  document.querySelector('#begin').onclick=selectCategory;
  document.querySelector('.atelier-actions a').onclick=e=>{
