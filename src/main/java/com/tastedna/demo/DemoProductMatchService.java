@@ -88,10 +88,14 @@ public class DemoProductMatchService {
                 .map(p -> {
                     var matchedEvidence = new ArrayList<>(evidence.entrySet().stream()
                             .filter(e -> p.getStyleCodes().contains(e.getKey())).map(Map.Entry::getValue).toList());
-                    // 색상은 추가 설명일 뿐 스타일 후보의 포함 여부나 순서를 바꾸지 않는다.
+                    // 색상 근거는 후보를 제외하지 않고 우선 배치 여부에만 사용한다.
                     colors.forEach((code, fact) -> { if (p.getColorCodes().contains(code)) matchedEvidence.add(fact); });
                     return new Product(p.getProductId(), p.getName(), p.getImageUrl(), p.getPrice(), true, List.copyOf(matchedEvidence));
-                }).toList();
+                })
+                // 안정 정렬로 색상 일치 상품을 먼저 두고, 그룹 안의 기존 상품 ID 순서는 보존한다.
+                .sorted(Comparator.comparing((Product p) -> p.evidence().stream()
+                        .noneMatch(e -> "Q01".equals(e.questionId()) && e.colorCode() != null)))
+                .toList();
         return new Response(id, session.definitionId(), session.revision(), "EXPLICIT_STYLE_ATTRIBUTE", matched);
     }
 
