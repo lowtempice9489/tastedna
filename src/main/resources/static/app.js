@@ -326,7 +326,10 @@ async function result(){
   const initial=await api('/sessions/'+resultSessionId+'/initial-candidates');
   if(initial.sessionId===resultSessionId&&initial.definitionId===data.session.definitionId&&initial.revision===data.session.revision)
    representative=initial.simpleRepresentative;
- }catch{/* 대표 조회 실패에도 직접 선호 리포트와 상품은 유지한다. */}
+ }catch(e){
+  // 인증 만료는 공통 로그인 안내로 전달하고, 일반 조회 실패만 리포트에서 격리한다.
+  if(e.status===401)throw e;
+ }
  const representativeLabel=representative?.sources?.[0]?.optionLabel;
  const evidence=data.evidence,byQ=id=>evidence.find(e=>e.questionId===id);
  const scope=data.session.apparelScope||session.apparelScope;
@@ -356,7 +359,8 @@ async function result(){
    }
   };
   renderProducts();
- }catch{
+ }catch(e){
+  if(e.status===401)throw e;
   products.innerHTML=heading+'<p class="matched-product-state">전시 상품을 불러오지 못했어요. 직접 선호 기록은 위에서 확인할 수 있습니다.</p>';
  }
 }

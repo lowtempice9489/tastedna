@@ -198,6 +198,25 @@ test('logout clears in-memory member and assessment; login without member cannot
  assert.equal(run('returnTo'),null);
 });
 
+test('report optional requests propagate expired login instead of retaining member data',async()=>{
+ for(const expiredPath of ['initial-candidates','matched-demo-products']){
+  const {run,node,client}=screen();
+  client.request=async path=>{
+   if(path.endsWith('/'+expiredPath))throw Object.assign(new Error('AUTHENTICATION_REQUIRED'),{status:401});
+   if(path.endsWith('/preference-summary'))return {session:{status:'SUBMITTED',definitionId:'def',revision:1},title:'저장된 취향',evidence:[]};
+   return {sessionId:'owned',definitionId:'def',revision:1,simpleRepresentative:null};
+  };
+  run("member={email:'a@example.test'};session={sessionId:'owned'};answers={Q01:{selectedOptionIds:['A']}};location.hash='#session=owned';");
+  await run('action(result)');
+  assert.equal(run('member'),null);
+  assert.equal(run('session'),null);
+  assert.equal(run('Object.keys(answers).length'),0);
+  assert.equal(run('returnTo'),'owned');
+  assert.match(node('main').innerHTML,/FORM 로그인/);
+  assert.doesNotMatch(node('main').innerHTML,/저장된 취향/);
+ }
+});
+
 test('mypage requires FORM login and returns without creating a test',async()=>{
  const {run,node,calls,client}=screen();
  run('openMyPage()');assert.match(node('main').innerHTML,/FORM 로그인/);assert.equal(run('returnTo'),'mypage');assert.equal(calls.length,0);
