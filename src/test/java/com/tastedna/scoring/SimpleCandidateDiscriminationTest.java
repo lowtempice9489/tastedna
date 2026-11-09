@@ -4,6 +4,7 @@ import com.tastedna.scoring.application.RawObservationAggregator;
 import com.tastedna.scoring.application.ResultCandidateEvidence;
 import com.tastedna.scoring.application.SimpleCandidateDiscrimination;
 import com.tastedna.scoring.application.SimpleObservationProfile;
+import com.tastedna.scoring.application.SimpleInitialCandidateService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.JsonNode;
@@ -20,6 +21,55 @@ import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SimpleCandidateDiscriminationTest {
+
+    @Test void candidateReviewSeparatesSourcesWithoutCountingDuplicatesOrInventingConflicts() {
+        var q02 = new SimpleInitialCandidateService.Source("Q02", "스타일", "R01", "미니멀",
+                "DIRECT_FASHION_LOOK_PREFERENCE", "EXPLICIT_SELECTION", 2);
+        var q09 = new SimpleInitialCandidateService.Source("Q09", "비교", "C03:A", "미니멀 블랙 코디 그룹",
+                "DIRECT_COMBINATION_PREFERENCE", "EXPLICIT_SELECTION", 4);
+        String def = "33333333-3333-4333-8333-333333333333";
+        var avoidance = new SimpleInitialCandidateService.Observation(def, "Q07", "A", null,
+                "DIRECT_OUTFIT_AVOIDANCE", "착장 A", "EXPLICIT_SELECTION", 3, null);
+        var candidate = new SimpleInitialCandidateService.Candidate("R01", "Minimal", List.of(q02),
+                new SimpleInitialCandidateService.CandidateEvidence(List.of(q09, q02, q09), List.of(),
+                        List.of(avoidance, avoidance), "CANDIDATE_RELATIONS_PENDING"));
+        var response = reviewInput(List.of(candidate));
+        var review = SimpleCandidateDiscrimination.reviewInitialCandidates(response);
+        var evidence = review.candidates().getFirst();
+        assertEquals(List.of(q02), evidence.directPreference());
+        assertEquals(List.of(q09), evidence.additionalSupport());
+        assertEquals(Set.of("Q02", "Q09"), evidence.supportingQuestions());
+        assertEquals(List.of(avoidance), evidence.unresolved());
+        assertTrue(evidence.approvedConflicts().isEmpty());
+        assertFalse(evidence.missingRequirements().contains("CONFLICT_RESOLUTION_RULE_REQUIRED"));
+        assertTrue(evidence.missingRequirements().contains("UNRESOLVED_OBSERVATION_RELATIONS"));
+        assertTrue(review.validatedCandidateIds().isEmpty());
+        assertEquals(response.definitionId(), review.definitionId());
+        assertEquals(response.revision(), review.revision());
+        assertEquals(review, SimpleCandidateDiscrimination.reviewInitialCandidates(response));
+    }
+
+    @Test void reviewWithoutQ02OrPositiveEvidenceNeverGrantsSufficiency() {
+        var source = new SimpleInitialCandidateService.Source("Q10", "착장", "D", "착장 D",
+                "DIRECT_FINAL_OUTFIT_PREFERENCE", "EXPLICIT_SELECTION", 5);
+        var supported = new SimpleInitialCandidateService.Candidate("R13", "Graphic Street", List.of(),
+                new SimpleInitialCandidateService.CandidateEvidence(List.of(source, source), List.of(), List.of(), "CANDIDATE_RELATIONS_PENDING"));
+        var unsupported = new SimpleInitialCandidateService.Candidate("R18", "Minimal×Street", List.of(),
+                new SimpleInitialCandidateService.CandidateEvidence(List.of(), List.of(), List.of(), "CANDIDATE_RELATIONS_PENDING"));
+        var review = SimpleCandidateDiscrimination.reviewInitialCandidates(reviewInput(List.of(supported, unsupported)));
+        assertEquals(List.of(source), review.candidates().getFirst().additionalSupport());
+        assertEquals(Set.of("Q10"), review.candidates().getFirst().supportingQuestions());
+        assertTrue(review.candidates().getFirst().directPreference().isEmpty());
+        assertTrue(review.candidates().getLast().missingRequirements().contains("NO_APPROVED_POSITIVE_EVIDENCE"));
+        assertTrue(review.validatedCandidateIds().isEmpty());
+        assertFalse(review.missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
+    }
+
+    SimpleInitialCandidateService.Response reviewInput(List<SimpleInitialCandidateService.Candidate> candidates) {
+        return new SimpleInitialCandidateService.Response(new UUID(0, 1),
+                UUID.fromString("33333333-3333-4333-8333-333333333333"), 10, "INITIAL_CANDIDATES", false,
+                candidates, new SimpleInitialCandidateService.Decision("DEFERRED", List.of(), List.of()), null);
+    }
 
     @Test void validatedSelectionIsRepeatableOrderIndependentAndWithinCandidates() {
         UUID session = new UUID(0, 1);

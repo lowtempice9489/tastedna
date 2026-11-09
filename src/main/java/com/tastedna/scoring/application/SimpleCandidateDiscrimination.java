@@ -1,6 +1,8 @@
 package com.tastedna.scoring.application;
 
 import tools.jackson.databind.JsonNode;
+import com.tastedna.scoring.application.SimpleInitialCandidateService.Source;
+import com.tastedna.scoring.application.SimpleInitialCandidateService.Observation;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -20,6 +22,49 @@ public record SimpleCandidateDiscrimination(
 
     public static final String INSUFFICIENT_EVIDENCE =
             "INSUFFICIENT_DISCRIMINATING_EVIDENCE";
+
+    public record CandidateReview(String candidateId, List<Source> directPreference,
+                                  List<Source> additionalSupport, Set<String> supportingQuestions,
+                                  List<Observation> approvedConflicts, List<Observation> unresolved,
+                                  List<String> missingRequirements) {}
+
+    public record CandidatePoolReview(UUID sessionId, UUID definitionId, long revision,
+                                      List<CandidateReview> candidates, List<String> validatedCandidateIds,
+                                      List<String> missingRequirements) {}
+
+    // 본인·제출·최신 답변 검증을 거친 초기 후보 응답만 평가한다. 질문 수는 출처 요약이지 점수가 아니다.
+    public static CandidatePoolReview reviewInitialCandidates(SimpleInitialCandidateService.Response initial) {
+        var reviews = new ArrayList<CandidateReview>();
+        for (var candidate : initial.candidates()) {
+            var positive = candidate.evidence().positive().stream().distinct()
+                    .sorted(Comparator.comparing(Source::questionId).thenComparing(Source::optionId)
+                            .thenComparingLong(Source::answerRevision).thenComparing(Source::observationType)
+                            .thenComparing(Source::evidenceType).thenComparing(Source::optionLabel)).toList();
+            var direct = positive.stream().filter(candidate.sources()::contains).toList();
+            var additional = positive.stream().filter(s -> !candidate.sources().contains(s)).toList();
+            var questions = new TreeSet<String>();
+            positive.forEach(s -> questions.add(s.questionId()));
+            var conflicts = candidate.evidence().avoidanceOrConflict().stream().distinct().toList();
+            var unresolved = candidate.evidence().unresolved().stream().distinct().toList();
+            var missing = new ArrayList<String>();
+            if (positive.isEmpty()) missing.add("NO_APPROVED_POSITIVE_EVIDENCE");
+            if (!conflicts.isEmpty()) missing.add("CONFLICT_RESOLUTION_RULE_REQUIRED");
+            if (!unresolved.isEmpty()) missing.add("UNRESOLVED_OBSERVATION_RELATIONS");
+            missing.add("CANDIDATE_SUFFICIENCY_RULE_REQUIRED");
+            reviews.add(new CandidateReview(candidate.candidateId(), direct, additional,
+                    Collections.unmodifiableSet(questions), conflicts, unresolved, List.copyOf(missing)));
+        }
+        reviews.sort(Comparator.comparing(CandidateReview::candidateId));
+        var missing = new ArrayList<String>();
+        missing.add("CANDIDATE_SUFFICIENCY_RULE_REQUIRED");
+        if (reviews.size() > 5) {
+            missing.add("CANDIDATE_LIMIT_POLICY_REQUIRED");
+            missing.add("CANDIDATE_BOUNDARY_DISCRIMINATION_REQUIRED");
+        }
+        // 충분성·경계 구별 규칙이 없으므로 5개 이하도 유효 판정하지 않고, 초과 후보도 삭제하지 않는다.
+        return new CandidatePoolReview(initial.sessionId(), initial.definitionId(), initial.revision(),
+                List.copyOf(reviews), List.of(), List.copyOf(missing));
+    }
 
     // 충분성 검증을 마친 후보만 호출자가 전달한다. 초기 후보 API에는 연결하지 않는다.
     // UTF-8 길이 접두 인코딩과 SHA-256-v1을 고정하여 재조회·입력 순서에 따른 재추첨을 막는다.

@@ -434,6 +434,12 @@ class SimpleInitialCandidateServiceTest {
         assertEquals("B", support.getFirst().optionId());
         assertEquals(4, support.getFirst().answerRevision());
         assertEquals(3, response.candidates().get(4).evidence().positive().getFirst().answerRevision());
+        var review = SimpleCandidateDiscrimination.reviewInitialCandidates(response);
+        assertEquals(response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList(),
+                review.candidates().stream().map(SimpleCandidateDiscrimination.CandidateReview::candidateId).toList());
+        assertTrue(review.validatedCandidateIds().isEmpty());
+        assertTrue(review.missingRequirements().contains("CANDIDATE_BOUNDARY_DISCRIMINATION_REQUIRED"));
+        assertEquals(Set.of("Q05"), review.candidates().getLast().supportingQuestions());
         Collections.reverse(facts);
         when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
         assertEquals(response, service.find("member", id));
