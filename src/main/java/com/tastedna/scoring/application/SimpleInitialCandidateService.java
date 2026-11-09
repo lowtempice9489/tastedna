@@ -6,6 +6,7 @@ import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.domain.SessionAnswerId;
 import com.tastedna.session.persistence.SessionAnswerRepository;
 import com.tastedna.session.application.multi.MultiChoiceAnswerPayloadExtractor;
+import com.tastedna.session.application.single.SingleChoiceAnswerPayloadExtractor;
 import com.tastedna.session.application.comparison.ComparisonAnswerPayloadExtractor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -70,6 +71,7 @@ public class SimpleInitialCandidateService {
         Map<String, List<Source>> additionalSources = new HashMap<>();
         for (var source : combinationSupport)
             additionalSources.computeIfAbsent("C03:A".equals(source.optionId()) ? "R01" : "R07", ignored -> new ArrayList<>()).add(source);
+        addOutfitEntrySupport(sessionId, session.definitionId().toString(), facts, additionalSources);
         // 승인된 진입 관계의 합집합만 조회한다. 카탈로그 등록이나 후보 그룹 자체는 진입 근거가 아니다.
         Set<String> candidateIds = new HashSet<>(directSources.keySet());
         candidateIds.addAll(additionalSources.keySet());
@@ -109,6 +111,47 @@ public class SimpleInitialCandidateService {
                 && s.answerRevision() == answer.orElseThrow().getAnswerRevision()) ? directCandidates.getFirst() : null;
         return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", false,
                 List.copyOf(result), new Decision("DEFERRED", List.of(), List.copyOf(missing)), representative);
+    }
+
+    // 07A에서 허용한 전체 착장의 초기 검토 관계만 연결한다. 최종 충분성이나 VERIFIED를 뜻하지 않는다.
+    private void addOutfitEntrySupport(UUID sessionId, String definitionId, List<Observation> facts,
+                                      Map<String, List<Source>> support) {
+        if ("33333333-3333-4333-8333-333333333333".equals(definitionId)) {
+            addOutfitSource(sessionId, facts, support, "Q10", "D", "R13", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/Q10_D.png");
+            addOutfitSource(sessionId, facts, support, "Q05", "B", "R16", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/male/Q05/TasteDNA_Q05_B.png");
+            addOutfitSource(sessionId, facts, support, "Q05", "C", "R17", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/male/Q05/TasteDNA_Q05_C.png");
+        } else if ("6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definitionId)) {
+            addOutfitSource(sessionId, facts, support, "Q05", "B", "R13", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/female/Q05/B.png");
+            addOutfitSource(sessionId, facts, support, "Q10", "G", "R13", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/G.png");
+            addOutfitSource(sessionId, facts, support, "Q06", "B", "R17", "DIRECT_CLOTHING_PREFERENCE", "/assets/gender/female/Q06/B.png");
+            addOutfitSource(sessionId, facts, support, "Q10", "H", "R17", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/H.png");
+        }
+    }
+
+    private void addOutfitSource(UUID sessionId, List<Observation> facts, Map<String, List<Source>> support,
+                                String questionId, String optionId, String candidateId, String type, String image) {
+        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), questionId));
+        if (answer.isEmpty()) return;
+        var stored = answer.get();
+        var presented = mapper.readTree(stored.getPresentedPayload());
+        var payload = mapper.readTree(stored.getAnswerPayload());
+        boolean selected = switch (presented.path("kind").asString()) {
+            case "SINGLE_CHOICE" -> optionId.equals(SingleChoiceAnswerPayloadExtractor.extract(payload));
+            case "MULTIPLE_CHOICE" -> MultiChoiceAnswerPayloadExtractor.extract(payload).contains(optionId);
+            default -> false;
+        };
+        if (!selected) return;
+        for (var option : presented.path("options")) {
+            if (!optionId.equals(option.path("id").asString()) || option.path("images").size() != 1
+                    || !image.equals(option.path("images").path(0).asString())) continue;
+            String label = option.path("label").asString();
+            var sources = facts.stream().filter(f -> questionId.equals(f.questionId()) && optionId.equals(f.optionId())
+                            && type.equals(f.observationType()) && "EXPLICIT_SELECTION".equals(f.evidenceType())
+                            && stored.getAnswerRevision() == f.answerRevision() && label.equals(f.observedValue()))
+                    .map(f -> new Source(questionId, presented.path("prompt").asString(), optionId, label,
+                            type, f.evidenceType(), f.answerRevision())).distinct().toList();
+            if (!sources.isEmpty()) support.computeIfAbsent(candidateId, ignored -> new ArrayList<>()).addAll(sources);
+        }
     }
 
     private List<Source> mensBlackCombinationSupport(UUID sessionId, String definitionId, List<Observation> facts) {

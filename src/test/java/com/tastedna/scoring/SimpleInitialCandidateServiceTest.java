@@ -351,6 +351,107 @@ class SimpleInitialCandidateServiceTest {
         throw new AssertionError("Missing actual Q09 C03 option");
     }
 
+    @Test void approvedOutfitEntriesPreserveSourcesScopeAndRepresentative() throws Exception {
+        for (var rule : List.of(
+                List.of("M", "Q10", "D", "R13"), List.of("M", "Q05", "B", "R16"), List.of("M", "Q05", "C", "R17"),
+                List.of("W", "Q05", "B", "R13"), List.of("W", "Q10", "G", "R13"),
+                List.of("W", "Q06", "B", "R17"), List.of("W", "Q10", "H", "R17"))) {
+            reset(answers);
+            UUID def = rule.getFirst().equals("M") ? definition : UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
+            session(def, "SUBMITTED");
+            select(def, "R03");
+            addCatalogCandidate(rule.get(3));
+            var direct = observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE").getFirst();
+            var outfit = outfit(def, rule.get(1), rule.get(2), 3);
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(direct, outfit, outfit)));
+            var response = service.find("member", id);
+            assertEquals(List.of("R03", rule.get(3)), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+            var candidate = response.candidates().getLast();
+            assertTrue(candidate.sources().isEmpty());
+            assertEquals(1, candidate.evidence().positive().size());
+            assertEquals(3, candidate.evidence().positive().getFirst().answerRevision());
+            assertTrue(candidate.evidence().unresolved().stream().noneMatch(o -> o.questionId().equals(rule.get(1))));
+            assertTrue(candidate.evidence().avoidanceOrConflict().isEmpty());
+            assertEquals("R03", response.simpleRepresentative().candidateId());
+            assertEquals("DEFERRED", response.decision().status());
+            assertFalse(response.finalResult());
+            assertEquals(response, service.find("member", id));
+
+            // 동일 옵션/Raw라도 다른 정의나 최신 revision이 아니면 진입하지 않는다.
+            session(UUID.randomUUID(), "SUBMITTED");
+            assertTrue(service.find("member", id).candidates().isEmpty());
+            session(def, "SUBMITTED");
+            outfit(def, rule.get(1), rule.get(2), 4);
+            assertEquals(List.of("R03"), service.find("member", id).candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+        }
+    }
+
+    @Test void outfitEvidenceMergesAndRejectsChangedSelectionImageAndInferredEvidence() throws Exception {
+        UUID womens = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
+        session(womens, "SUBMITTED");
+        addCatalogCandidate("R13");
+        var first = outfit(womens, "Q05", "B", 3);
+        var second = outfit(womens, "Q10", "G", 4);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(first, second)));
+        var response = service.find("member", id);
+        assertEquals(1, response.candidates().size());
+        assertEquals(2, response.candidates().getFirst().evidence().positive().size());
+        assertNull(response.simpleRepresentative());
+        outfit(womens, "Q05", "A", 5);
+        outfit(womens, "Q10", "A", 5);
+        assertTrue(service.find("member", id).candidates().isEmpty());
+        var current = outfit(womens, "Q05", "B", 6);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(new RawObservationAggregator.RawObservation(
+                womens.toString(), current.type(), current.observedValue(), "INFERRED", "Q05", "B", 6))));
+        assertTrue(service.find("member", id).candidates().isEmpty());
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(current)));
+        var stored = answers.findById(new SessionAnswerId(id.toString(), "Q05")).orElseThrow();
+        when(answers.findById(new SessionAnswerId(id.toString(), "Q05"))).thenReturn(Optional.of(new SessionAnswer(
+                id.toString(), "Q05", stored.getAnswerPayload(), stored.getPresentedPayload().replace("/Q05/B.png", "/Q05/A.png"), 6, LocalDateTime.now())));
+        assertTrue(service.find("member", id).candidates().isEmpty());
+    }
+
+    @Test void realFourStyleAnswerPlusComparisonAndOutfitRequiresReductionPolicy() throws Exception {
+        addCatalogCandidate("R16");
+        select(definition, "R02", "R03", "R04", "R05");
+        var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
+        facts.add(blackComparison("B", 3));
+        facts.add(outfit(definition, "Q05", "B", 4));
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        var error = assertThrows(ResponseStatusException.class, () -> service.find("member", id));
+        assertEquals("CANDIDATE_LIMIT_POLICY_REQUIRED", error.getReason());
+        assertEquals(422, error.getStatusCode().value());
+    }
+
+    void addCatalogCandidate(String candidateId) {
+        var entries = new ArrayList<>(catalog.findByCandidateIdIn(List.of()));
+        if (entries.stream().noneMatch(c -> c.getCandidateId().equals(candidateId))) {
+            var entry = mock(ResultCandidate.class);
+            when(entry.getCandidateId()).thenReturn(candidateId);
+            when(entry.getCandidateName()).thenReturn("Catalog " + candidateId);
+            entries.add(entry);
+        }
+        when(catalog.findByCandidateIdIn(any())).thenReturn(entries);
+    }
+
+    RawObservationAggregator.RawObservation outfit(UUID def, String q, String optionId, long revision) throws Exception {
+        String migration = def.equals(definition) ? "V13__add_mens_image_simple_definition.sql"
+                : q.equals("Q10") ? "V19__add_womens_simple_q08_q10.sql" : "V18__add_womens_simple_q05_q07.sql";
+        String line = Files.readAllLines(Path.of("src/main/resources/db/migration", migration)).stream()
+                .filter(l -> l.startsWith("INSERT INTO td_question_definition") && l.contains("'" + q + "',")).findFirst().orElseThrow();
+        String json = line.substring(line.indexOf("'{") + 1, line.indexOf("}','") + 1);
+        var question = mapper.readTree(json);
+        String payload = mapper.writeValueAsString(def.equals(definition) ? Map.of("selectedOptionId", optionId)
+                : Map.of("selectedOptionIds", List.of(optionId)));
+        when(answers.findById(new SessionAnswerId(id.toString(), q))).thenReturn(Optional.of(new SessionAnswer(
+                id.toString(), q, payload, json, revision, LocalDateTime.now())));
+        for (var option : question.path("options")) if (optionId.equals(option.path("id").asString()))
+            return new RawObservationAggregator.RawObservation(def.toString(), q.equals("Q05") ? "DIRECT_OUTFIT_PREFERENCE"
+                    : q.equals("Q06") ? "DIRECT_CLOTHING_PREFERENCE" : "DIRECT_FINAL_OUTFIT_PREFERENCE",
+                    option.path("label").asString(), "EXPLICIT_SELECTION", q, optionId, revision);
+        throw new AssertionError("Missing outfit option");
+    }
+
     RawObservationAggregator.RawObservation fact(String q, String option, String type, String value, String evidence) {
         return new RawObservationAggregator.RawObservation(definition.toString(), type, value, evidence, q, option, 2);
     }
