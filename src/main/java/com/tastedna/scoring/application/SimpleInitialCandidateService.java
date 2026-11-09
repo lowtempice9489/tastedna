@@ -47,43 +47,50 @@ public class SimpleInitialCandidateService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "SESSION_NOT_SUBMITTED");
         if (!"SIMPLE".equals(session.mode().name()))
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "SIMPLE_SESSION_REQUIRED");
-        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), "Q02"))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Q02_ANSWER_REQUIRED"));
-        var presented = mapper.readTree(answer.getPresentedPayload());
+        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), "Q02"));
+        var presented = answer.map(a -> mapper.readTree(a.getPresentedPayload())).orElseGet(mapper::createObjectNode);
         // 남녀 공통으로 승인된 이미지 Q02 계약을 기준으로 삼고, 세션의 실제 정의 ID는 보존한다.
         var approved = questions.findByIdDefinitionIdAndIdQuestionId(
                 "33333333-3333-4333-8333-333333333333", "Q02")
                 .orElseThrow(() -> new IllegalStateException("APPROVED_Q02_NOT_FOUND"));
-        var evidence = candidates.extractCompatibleDirectEvidence(memberId, sessionId.toString(),
-                session.definitionId().toString(), mapper.readTree(approved.getQuestionPayload()), presented);
-        var definitions = catalog.findByCandidateIdIn(evidence.stream().map(ResultCandidateEvidence::candidateId).toList());
+        var evidence = answer.isPresent() ? candidates.extractCompatibleDirectEvidence(memberId, sessionId.toString(),
+                session.definitionId().toString(), mapper.readTree(approved.getQuestionPayload()), presented)
+                : List.<ResultCandidateEvidence>of();
         var facts = observationFacts(observations.collectRaw(memberId, sessionId.toString()), session.definitionId().toString());
         var combinationSupport = mensBlackCombinationSupport(sessionId, session.definitionId().toString(), facts);
         Map<String, String> labels = new HashMap<>();
         for (var option : presented.path("options")) labels.put(option.path("id").asString(), option.path("label").asString());
-        List<Candidate> result = new ArrayList<>();
+        Map<String, List<Source>> directSources = new HashMap<>();
         for (var item : evidence) {
-            var definition = definitions.stream().filter(d -> d.isStyleCore() && d.getCandidateId().equals(item.candidateId())).findFirst();
-            if (definition.isEmpty() || item.sources().isEmpty()) continue;
             var sources = item.sources().stream().distinct().sorted(Comparator.comparing(ResultCandidateEvidence.EvidenceSource::optionId))
                     .map(s -> new Source(s.questionId(), presented.path("prompt").asString(), s.optionId(), labels.get(s.optionId()),
                             s.observationType(), s.evidenceType(), s.answerRevision())).toList();
+            if (!sources.isEmpty()) directSources.put(item.candidateId(), sources);
+        }
+        Map<String, List<Source>> additionalSources = new HashMap<>();
+        for (var source : combinationSupport)
+            additionalSources.computeIfAbsent("C03:A".equals(source.optionId()) ? "R01" : "R07", ignored -> new ArrayList<>()).add(source);
+        // 승인된 진입 관계의 합집합만 조회한다. 카탈로그 등록이나 후보 그룹 자체는 진입 근거가 아니다.
+        Set<String> candidateIds = new HashSet<>(directSources.keySet());
+        candidateIds.addAll(additionalSources.keySet());
+        var definitions = catalog.findByCandidateIdIn(candidateIds);
+        List<Candidate> result = new ArrayList<>();
+        for (String candidateId : candidateIds) {
+            var definition = definitions.stream().filter(d -> d.getCandidateId().equals(candidateId)).findFirst();
+            if (definition.isEmpty()) continue;
+            var sources = directSources.getOrDefault(candidateId, List.of());
             var positive = new ArrayList<>(sources);
-            // 승인된 남성복 비교는 기존 후보만 보조하며 Q02 sources와 대표 스타일 조건은 보존한다.
-            combinationSupport.stream().filter(s ->
-                    ("R01".equals(item.candidateId()) && "C03:A".equals(s.optionId()))
-                    || ("R07".equals(item.candidateId()) && "C03:B".equals(s.optionId())))
-                    .forEach(positive::add);
+            positive.addAll(additionalSources.getOrDefault(candidateId, List.of()));
             // 회피 사실도 후보와의 승인된 관계가 없으면 충돌로 승격하지 않는다.
             var unresolved = facts.stream().filter(f -> positive.stream().noneMatch(s ->
                     s.questionId().equals(f.questionId()) && s.optionId().equals(f.optionId())
                             && s.observationType().equals(f.observationType()) && s.evidenceType().equals(f.evidenceType())
                             && s.answerRevision() == f.answerRevision()
                             && s.optionLabel().equals(f.observedValue()))).toList();
-            result.add(new Candidate(item.candidateId(), definition.get().getCandidateName(), sources,
+            result.add(new Candidate(candidateId, definition.get().getCandidateName(), sources,
                     new CandidateEvidence(List.copyOf(positive), List.of(), unresolved, "CANDIDATE_RELATIONS_PENDING")));
         }
-        // 현재 Q02 최대 4개. 향후 초과 계약은 임의의 우선순위로 잘라내지 않고 승인을 요구한다.
+        // 진입 근거가 늘어도 초과 후보를 임의의 우선순위로 잘라내지 않는다.
         if (result.size() > 5)
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "CANDIDATE_LIMIT_POLICY_REQUIRED");
         result.sort(Comparator.comparing(Candidate::candidateId));
@@ -93,11 +100,13 @@ public class SimpleInitialCandidateService {
         missing.addAll(List.of("VERIFIED_CANDIDATE_EVIDENCE_MAPPING",
                 "NEGATIVE_AND_RANKED_EVIDENCE_INTERPRETATION",
                 "CANDIDATE_DISCRIMINATION_RULE", "FINALIZATION_RULE"));
-        var selected = MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(answer.getAnswerPayload()));
+        var selected = answer.map(a -> MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(a.getAnswerPayload())))
+                .orElse(List.of());
         // 최신 단일 직접 선택만 Simple 대표로 표시하며 종합 RESULT의 보류 상태는 유지한다.
-        Candidate representative = selected.size() == 1 && result.size() == 1
-                && result.getFirst().sources().stream().allMatch(s -> selected.contains(s.optionId())
-                && s.answerRevision() == answer.getAnswerRevision()) ? result.getFirst() : null;
+        var directCandidates = result.stream().filter(c -> !c.sources().isEmpty()).toList();
+        Candidate representative = selected.size() == 1 && directCandidates.size() == 1
+                && directCandidates.getFirst().sources().stream().allMatch(s -> selected.contains(s.optionId())
+                && s.answerRevision() == answer.orElseThrow().getAnswerRevision()) ? directCandidates.getFirst() : null;
         return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", false,
                 List.copyOf(result), new Decision("DEFERRED", List.of(), List.copyOf(missing)), representative);
     }

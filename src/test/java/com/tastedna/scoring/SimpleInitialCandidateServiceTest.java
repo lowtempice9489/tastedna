@@ -224,8 +224,8 @@ class SimpleInitialCandidateServiceTest {
         assertEquals(1, evidence.unresolved().size());
         assertEquals("NO_EXPLICIT_OUTFIT_AVOIDANCE", evidence.unresolved().getFirst().observationType());
     }
-    @Test void mensBlackComparisonSupportsOnlyExistingMatchingCandidate() throws Exception {
-        for (String candidate : List.of("R01", "R07", "R02")) {
+    @Test void mensBlackComparisonAddsReviewCandidateAndPreservesDirectRepresentative() throws Exception {
+        for (String candidate : List.of("R01", "R07", "R03")) {
             for (String option : List.of("A", "B")) {
                 select(definition, candidate);
                 var support = blackComparison(option, 3);
@@ -233,8 +233,9 @@ class SimpleInitialCandidateServiceTest {
                 when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(direct, support, support)));
                 var response = service.find("member", id);
                 boolean matches = candidate.equals("R01") && option.equals("A") || candidate.equals("R07") && option.equals("B");
-                assertEquals(List.of(candidate), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
-                var result = response.candidates().getFirst();
+                String supportedId = option.equals("A") ? "R01" : "R07";
+                assertEquals(new TreeSet<>(List.of(candidate, supportedId)), new TreeSet<>(response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList()));
+                var result = response.candidates().stream().filter(c -> c.candidateId().equals(candidate)).findFirst().orElseThrow();
                 assertEquals(1, result.sources().size());
                 assertEquals("Q02", result.sources().getFirst().questionId());
                 assertEquals(matches ? 2 : 1, result.evidence().positive().size());
@@ -246,12 +247,57 @@ class SimpleInitialCandidateServiceTest {
                     assertEquals(support.observedValue(), source.optionLabel());
                 }
                 assertEquals(result, response.simpleRepresentative());
+                var supported = response.candidates().stream().filter(c -> c.candidateId().equals(supportedId)).findFirst().orElseThrow();
+                assertEquals(matches ? 1 : 0, supported.sources().size());
+                assertEquals(matches ? 2 : 1, supported.evidence().positive().size());
+                assertTrue(supported.evidence().unresolved().stream().noneMatch(o -> o.questionId().equals("Q09")));
+                assertTrue(response.candidates().stream().allMatch(c -> c.evidence().avoidanceOrConflict().isEmpty()));
                 assertEquals("DEFERRED", response.decision().status());
                 assertFalse(response.finalResult());
                 assertTrue(response.decision().results().isEmpty());
                 assertEquals(response, service.find("member", id));
             }
         }
+    }
+
+    @Test void comparisonCanEnterWithoutQ02AndOldSelectionDoesNotKeepCandidate() throws Exception {
+        when(answers.findById(new SessionAnswerId(id.toString(), "Q02"))).thenReturn(Optional.empty());
+        var old = blackComparison("A", 3);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(old)));
+        var first = service.find("member", id);
+        assertEquals(List.of("R01"), first.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+        assertNull(first.simpleRepresentative());
+        assertTrue(first.candidates().getFirst().sources().isEmpty());
+        var current = blackComparison("B", 4);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(old, current)));
+        var updated = service.find("member", id);
+        assertEquals(List.of("R07"), updated.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+        assertEquals(4, updated.candidates().getFirst().evidence().positive().getFirst().answerRevision());
+        assertNull(updated.simpleRepresentative());
+        assertEquals("DEFERRED", updated.decision().status());
+        assertFalse(updated.finalResult());
+    }
+
+    @Test void unmappedCatalogEntriesAreNotCandidatesAndCombinedOverflowIsRejected() throws Exception {
+        var extra = mock(ResultCandidate.class);
+        when(extra.getCandidateId()).thenReturn("R18");
+        var entries = new ArrayList<>(catalog.findByCandidateIdIn(List.of()));
+        entries.add(extra);
+        when(catalog.findByCandidateIdIn(any())).thenReturn(entries);
+        select(definition, "R02", "R03", "R04", "R05");
+        var raw = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
+        raw.add(blackComparison("B", 3));
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(raw));
+        var response = service.find("member", id);
+        assertEquals(List.of("R02", "R03", "R04", "R05", "R07"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+        assertEquals("DEFERRED", response.decision().status());
+        assertNull(response.simpleRepresentative());
+        select(definition, "R02", "R03", "R04", "R05", "R06");
+        raw.add(fact("Q02", "R06", "DIRECT_FASHION_LOOK_PREFERENCE", label("R06"), "EXPLICIT_SELECTION"));
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(raw));
+        var error = assertThrows(ResponseStatusException.class, () -> service.find("member", id));
+        assertEquals(422, error.getStatusCode().value());
+        assertEquals("CANDIDATE_LIMIT_POLICY_REQUIRED", error.getReason());
     }
 
     @Test void changedSelectionRejectsOldRevisionAndWomensComparisonIsNotMapped() throws Exception {
@@ -277,13 +323,14 @@ class SimpleInitialCandidateServiceTest {
         assertEquals("DEFERRED", changed.decision().status());
         assertFalse(changed.finalResult());
 
-        UUID womens = UUID.fromString("44444444-4444-4444-8444-444444444444");
+        UUID womens = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
         when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, ApparelScope.womens, "SUBMITTED", 10, womens, null));
-        select(womens, "R07");
+        select(womens, "R03");
         when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(
-                new RawObservationAggregator.RawObservation(womens.toString(), "DIRECT_FASHION_LOOK_PREFERENCE", label("R07"), "EXPLICIT_SELECTION", "Q02", "R07", 2),
+                new RawObservationAggregator.RawObservation(womens.toString(), "DIRECT_FASHION_LOOK_PREFERENCE", label("R03"), "EXPLICIT_SELECTION", "Q02", "R03", 2),
                 new RawObservationAggregator.RawObservation(womens.toString(), current.type(), current.observedValue(), current.evidence(), "Q09", "C03:B", 4))));
         var response = service.find("member", id);
+        assertEquals(List.of("R03"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
         assertEquals(1, response.candidates().getFirst().evidence().positive().size());
         assertEquals(1, response.candidates().getFirst().evidence().unresolved().size());
         assertEquals("DEFERRED", response.decision().status());
