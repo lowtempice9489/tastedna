@@ -6,6 +6,7 @@ import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.domain.SessionAnswerId;
 import com.tastedna.session.persistence.SessionAnswerRepository;
 import com.tastedna.session.application.multi.MultiChoiceAnswerPayloadExtractor;
+import com.tastedna.session.application.comparison.ComparisonAnswerPayloadExtractor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -57,6 +58,7 @@ public class SimpleInitialCandidateService {
                 session.definitionId().toString(), mapper.readTree(approved.getQuestionPayload()), presented);
         var definitions = catalog.findByCandidateIdIn(evidence.stream().map(ResultCandidateEvidence::candidateId).toList());
         var facts = observationFacts(observations.collectRaw(memberId, sessionId.toString()), session.definitionId().toString());
+        var combinationSupport = mensBlackCombinationSupport(sessionId, session.definitionId().toString(), facts);
         Map<String, String> labels = new HashMap<>();
         for (var option : presented.path("options")) labels.put(option.path("id").asString(), option.path("label").asString());
         List<Candidate> result = new ArrayList<>();
@@ -66,14 +68,20 @@ public class SimpleInitialCandidateService {
             var sources = item.sources().stream().distinct().sorted(Comparator.comparing(ResultCandidateEvidence.EvidenceSource::optionId))
                     .map(s -> new Source(s.questionId(), presented.path("prompt").asString(), s.optionId(), labels.get(s.optionId()),
                             s.observationType(), s.evidenceType(), s.answerRevision())).toList();
+            var positive = new ArrayList<>(sources);
+            // 승인된 남성복 비교는 기존 후보만 보조하며 Q02 sources와 대표 스타일 조건은 보존한다.
+            combinationSupport.stream().filter(s ->
+                    ("R01".equals(item.candidateId()) && "C03:A".equals(s.optionId()))
+                    || ("R07".equals(item.candidateId()) && "C03:B".equals(s.optionId())))
+                    .forEach(positive::add);
             // 회피 사실도 후보와의 승인된 관계가 없으면 충돌로 승격하지 않는다.
-            var unresolved = facts.stream().filter(f -> sources.stream().noneMatch(s ->
+            var unresolved = facts.stream().filter(f -> positive.stream().noneMatch(s ->
                     s.questionId().equals(f.questionId()) && s.optionId().equals(f.optionId())
                             && s.observationType().equals(f.observationType()) && s.evidenceType().equals(f.evidenceType())
                             && s.answerRevision() == f.answerRevision()
                             && s.optionLabel().equals(f.observedValue()))).toList();
             result.add(new Candidate(item.candidateId(), definition.get().getCandidateName(), sources,
-                    new CandidateEvidence(sources, List.of(), unresolved, "CANDIDATE_RELATIONS_PENDING")));
+                    new CandidateEvidence(List.copyOf(positive), List.of(), unresolved, "CANDIDATE_RELATIONS_PENDING")));
         }
         // 현재 Q02 최대 4개. 향후 초과 계약은 임의의 우선순위로 잘라내지 않고 승인을 요구한다.
         if (result.size() > 5)
@@ -92,6 +100,33 @@ public class SimpleInitialCandidateService {
                 && s.answerRevision() == answer.getAnswerRevision()) ? result.getFirst() : null;
         return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", false,
                 List.copyOf(result), new Decision("DEFERRED", List.of(), List.copyOf(missing)), representative);
+    }
+
+    private List<Source> mensBlackCombinationSupport(UUID sessionId, String definitionId, List<Observation> facts) {
+        if (!"33333333-3333-4333-8333-333333333333".equals(definitionId)) return List.of();
+        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), "Q09"));
+        if (answer.isEmpty()) return List.of();
+        var stored = answer.get();
+        var selected = ComparisonAnswerPayloadExtractor.extractSelections(mapper.readTree(stored.getAnswerPayload())).get("C03");
+        if (selected == null || selected.ranked() || selected.optionIds().size() != 1) return List.of();
+        String optionId = selected.optionIds().getFirst();
+        if (!Set.of("A", "B").contains(optionId)) return List.of();
+        var presented = mapper.readTree(stored.getPresentedPayload());
+        for (var comparison : presented.path("comparisons")) {
+            if (!"C03".equals(comparison.path("id").asString())) continue;
+            for (var option : comparison.path("options")) {
+                if (!optionId.equals(option.path("id").asString())) continue;
+                String label = option.path("label").asString();
+                return facts.stream().filter(f -> definitionId.equals(f.definitionId())
+                                && "Q09".equals(f.questionId()) && ("C03:" + optionId).equals(f.optionId())
+                                && "DIRECT_COMBINATION_PREFERENCE".equals(f.observationType())
+                                && "EXPLICIT_SELECTION".equals(f.evidenceType())
+                                && stored.getAnswerRevision() == f.answerRevision() && label.equals(f.observedValue()))
+                        .map(f -> new Source("Q09", presented.path("prompt").asString(), f.optionId(), label,
+                                f.observationType(), f.evidenceType(), f.answerRevision())).distinct().toList();
+            }
+        }
+        return List.of();
     }
 
     // 관측 사실을 한 번씩 보존한다. 순위는 해당 비교 그룹 안에서만 유효하다.

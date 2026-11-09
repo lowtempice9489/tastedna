@@ -224,6 +224,86 @@ class SimpleInitialCandidateServiceTest {
         assertEquals(1, evidence.unresolved().size());
         assertEquals("NO_EXPLICIT_OUTFIT_AVOIDANCE", evidence.unresolved().getFirst().observationType());
     }
+    @Test void mensBlackComparisonSupportsOnlyExistingMatchingCandidate() throws Exception {
+        for (String candidate : List.of("R01", "R07", "R02")) {
+            for (String option : List.of("A", "B")) {
+                select(definition, candidate);
+                var support = blackComparison(option, 3);
+                var direct = fact("Q02", candidate, "DIRECT_FASHION_LOOK_PREFERENCE", label(candidate), "EXPLICIT_SELECTION");
+                when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(direct, support, support)));
+                var response = service.find("member", id);
+                boolean matches = candidate.equals("R01") && option.equals("A") || candidate.equals("R07") && option.equals("B");
+                assertEquals(List.of(candidate), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+                var result = response.candidates().getFirst();
+                assertEquals(1, result.sources().size());
+                assertEquals("Q02", result.sources().getFirst().questionId());
+                assertEquals(matches ? 2 : 1, result.evidence().positive().size());
+                assertEquals(matches ? 0 : 1, result.evidence().unresolved().size());
+                if (matches) {
+                    var source = result.evidence().positive().getLast();
+                    assertEquals("C03:" + option, source.optionId());
+                    assertEquals(3, source.answerRevision());
+                    assertEquals(support.observedValue(), source.optionLabel());
+                }
+                assertEquals(result, response.simpleRepresentative());
+                assertEquals("DEFERRED", response.decision().status());
+                assertFalse(response.finalResult());
+                assertTrue(response.decision().results().isEmpty());
+                assertEquals(response, service.find("member", id));
+            }
+        }
+    }
+
+    @Test void changedSelectionRejectsOldRevisionAndWomensComparisonIsNotMapped() throws Exception {
+        select(definition, "R01", "R07");
+        var direct = List.of(fact("Q02", "R01", "DIRECT_FASHION_LOOK_PREFERENCE", label("R01"), "EXPLICIT_SELECTION"),
+                fact("Q02", "R07", "DIRECT_FASHION_LOOK_PREFERENCE", label("R07"), "EXPLICIT_SELECTION"));
+        var old = blackComparison("A", 3);
+        var facts = new ArrayList<>(direct);
+        facts.add(old);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        assertEquals(2, service.find("member", id).candidates().getFirst().evidence().positive().size());
+        var current = blackComparison("B", 4);
+        facts.add(current);
+        // 이전 관측이 섞여도 저장된 최신 선택과 revision만 보조 근거로 인정한다.
+        facts.add(new RawObservationAggregator.RawObservation(definition.toString(), current.type(), current.observedValue(),
+                current.evidence(), "Q09", "C03:B", 3));
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        var changed = service.find("member", id);
+        assertEquals(1, changed.candidates().getFirst().evidence().positive().size());
+        assertEquals(2, changed.candidates().getLast().evidence().positive().size());
+        assertEquals(4, changed.candidates().getLast().evidence().positive().getLast().answerRevision());
+        assertNull(changed.simpleRepresentative());
+        assertEquals("DEFERRED", changed.decision().status());
+        assertFalse(changed.finalResult());
+
+        UUID womens = UUID.fromString("44444444-4444-4444-8444-444444444444");
+        when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, ApparelScope.womens, "SUBMITTED", 10, womens, null));
+        select(womens, "R07");
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(
+                new RawObservationAggregator.RawObservation(womens.toString(), "DIRECT_FASHION_LOOK_PREFERENCE", label("R07"), "EXPLICIT_SELECTION", "Q02", "R07", 2),
+                new RawObservationAggregator.RawObservation(womens.toString(), current.type(), current.observedValue(), current.evidence(), "Q09", "C03:B", 4))));
+        var response = service.find("member", id);
+        assertEquals(1, response.candidates().getFirst().evidence().positive().size());
+        assertEquals(1, response.candidates().getFirst().evidence().unresolved().size());
+        assertEquals("DEFERRED", response.decision().status());
+        assertFalse(response.finalResult());
+    }
+
+    RawObservationAggregator.RawObservation blackComparison(String optionId, long revision) throws Exception {
+        var q09 = ImageDefinitionTest.questions().get("Q09");
+        when(answers.findById(new SessionAnswerId(id.toString(), "Q09"))).thenReturn(Optional.of(new SessionAnswer(
+                id.toString(), "Q09", mapper.writeValueAsString(Map.of("selections", List.of(
+                Map.of("comparisonId", "C01", "selectedOptionId", "A"),
+                Map.of("comparisonId", "C02", "selectedOptionId", "A"),
+                Map.of("comparisonId", "C03", "selectedOptionId", optionId)))), q09.toString(), revision, LocalDateTime.now())));
+        for (var comparison : q09.path("comparisons")) if (comparison.path("id").asString().equals("C03"))
+            for (var option : comparison.path("options")) if (option.path("id").asString().equals(optionId))
+                return new RawObservationAggregator.RawObservation(definition.toString(), "DIRECT_COMBINATION_PREFERENCE",
+                        option.path("label").asString(), "EXPLICIT_SELECTION", "Q09", "C03:" + optionId, revision);
+        throw new AssertionError("Missing actual Q09 C03 option");
+    }
+
     RawObservationAggregator.RawObservation fact(String q, String option, String type, String value, String evidence) {
         return new RawObservationAggregator.RawObservation(definition.toString(), type, value, evidence, q, option, 2);
     }
