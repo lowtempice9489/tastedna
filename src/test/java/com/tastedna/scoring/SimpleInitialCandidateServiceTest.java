@@ -168,8 +168,10 @@ class SimpleInitialCandidateServiceTest {
         select(definition, "R01", "R02", "R03", "R04", "R05");
         assertEquals(5, service.find("member", id).candidates().size());
         assertTrue(service.find("member", id).decision().results().isEmpty());
+        assertFalse(service.find("member", id).decision().missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
         select(definition, "R01", "R02", "R03", "R04", "R05", "R06");
-        assertEquals(422, assertThrows(ResponseStatusException.class, () -> service.find("member", id)).getStatusCode().value());
+        assertEquals(6, service.find("member", id).candidates().size());
+        assertTrue(service.find("member", id).decision().missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
     }
     @Test void rejectsUnsubmittedAndOtherMembersBeforeReadingEvidence() {
         session(definition, "IN_PROGRESS");
@@ -278,7 +280,7 @@ class SimpleInitialCandidateServiceTest {
         assertFalse(updated.finalResult());
     }
 
-    @Test void unmappedCatalogEntriesAreNotCandidatesAndCombinedOverflowIsRejected() throws Exception {
+    @Test void unmappedCatalogEntriesAreNotCandidatesAndCombinedOverflowIsPreserved() throws Exception {
         var extra = mock(ResultCandidate.class);
         when(extra.getCandidateId()).thenReturn("R18");
         var entries = new ArrayList<>(catalog.findByCandidateIdIn(List.of()));
@@ -295,9 +297,9 @@ class SimpleInitialCandidateServiceTest {
         select(definition, "R02", "R03", "R04", "R05", "R06");
         raw.add(fact("Q02", "R06", "DIRECT_FASHION_LOOK_PREFERENCE", label("R06"), "EXPLICIT_SELECTION"));
         when(observations.collectRaw("member", id.toString())).thenReturn(group(raw));
-        var error = assertThrows(ResponseStatusException.class, () -> service.find("member", id));
-        assertEquals(422, error.getStatusCode().value());
-        assertEquals("CANDIDATE_LIMIT_POLICY_REQUIRED", error.getReason());
+        var expanded = service.find("member", id);
+        assertEquals(List.of("R02", "R03", "R04", "R05", "R06", "R07"), expanded.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+        assertTrue(expanded.decision().missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
     }
 
     @Test void changedSelectionRejectsOldRevisionAndWomensComparisonIsNotMapped() throws Exception {
@@ -417,10 +419,24 @@ class SimpleInitialCandidateServiceTest {
         var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
         facts.add(blackComparison("B", 3));
         facts.add(outfit(definition, "Q05", "B", 4));
+        facts.add(facts.getLast());
         when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
-        var error = assertThrows(ResponseStatusException.class, () -> service.find("member", id));
-        assertEquals("CANDIDATE_LIMIT_POLICY_REQUIRED", error.getReason());
-        assertEquals(422, error.getStatusCode().value());
+        var response = service.find("member", id);
+        assertEquals(List.of("R02", "R03", "R04", "R05", "R07", "R16"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+        assertTrue(response.decision().missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
+        assertEquals("DEFERRED", response.decision().status());
+        assertFalse(response.finalResult());
+        assertTrue(response.decision().results().isEmpty());
+        assertNull(response.simpleRepresentative());
+        var support = response.candidates().getLast().evidence().positive();
+        assertEquals(1, support.size());
+        assertEquals("Q05", support.getFirst().questionId());
+        assertEquals("B", support.getFirst().optionId());
+        assertEquals(4, support.getFirst().answerRevision());
+        assertEquals(3, response.candidates().get(4).evidence().positive().getFirst().answerRevision());
+        Collections.reverse(facts);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        assertEquals(response, service.find("member", id));
     }
 
     void addCatalogCandidate(String candidateId) {

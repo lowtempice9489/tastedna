@@ -92,12 +92,11 @@ public class SimpleInitialCandidateService {
             result.add(new Candidate(candidateId, definition.get().getCandidateName(), sources,
                     new CandidateEvidence(List.copyOf(positive), List.of(), unresolved, "CANDIDATE_RELATIONS_PENDING")));
         }
-        // 진입 근거가 늘어도 초과 후보를 임의의 우선순위로 잘라내지 않는다.
-        if (result.size() > 5)
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "CANDIDATE_LIMIT_POLICY_REQUIRED");
         result.sort(Comparator.comparing(Candidate::candidateId));
         // Q02 직접 선택은 초기 후보 근거다. 승인된 구별·확정 규칙 없이 최종 RESULT로 승격하지 않는다.
         List<String> missing = new ArrayList<>();
+        // 5개 제한은 최종 후보군에만 적용한다. 초기 근거는 보존하고 축소 정책 미확정을 알린다.
+        if (result.size() > 5) missing.add("CANDIDATE_LIMIT_POLICY_REQUIRED");
         if (result.isEmpty()) missing.add("MAPPED_DIRECT_PREFERENCE_EVIDENCE");
         missing.addAll(List.of("VERIFIED_CANDIDATE_EVIDENCE_MAPPING",
                 "NEGATIVE_AND_RANKED_EVIDENCE_INTERPRETATION",
