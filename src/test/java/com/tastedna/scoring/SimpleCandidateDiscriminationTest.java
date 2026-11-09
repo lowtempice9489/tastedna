@@ -13,10 +13,50 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.ArrayList;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SimpleCandidateDiscriminationTest {
+
+    @Test void validatedSelectionIsRepeatableOrderIndependentAndWithinCandidates() {
+        UUID session = new UUID(0, 1);
+        var all = List.of("R01", "R07", "R13", "R16", "R17");
+        for (int count = 1; count <= 5; count++) {
+            var ids = all.subList(0, count);
+            var selected = SimpleCandidateDiscrimination.selectValidatedRepresentative(session, 10, ids, "policy-v1");
+            assertTrue(ids.contains(selected.orElseThrow()));
+            var reordered = new ArrayList<>(ids);
+            Collections.reverse(reordered);
+            reordered.add(ids.getFirst());
+            assertEquals(selected, SimpleCandidateDiscrimination.selectValidatedRepresentative(session, 10, reordered, "policy-v1"));
+            assertEquals(selected, SimpleCandidateDiscrimination.selectValidatedRepresentative(session, 10, ids, "policy-v1"));
+        }
+        assertEquals("R25", SimpleCandidateDiscrimination.selectValidatedRepresentative(session, 10, List.of("R25"), "policy-v1").orElseThrow());
+    }
+
+    @Test void selectionEncodingHasStableGoldenVectorsForEveryInputDimension() {
+        var ids = List.of("R01", "R07", "R13", "R16", "R17");
+        // 독립 SHA-256 계산으로 고정한 벡터다. revision이 달라도 같은 ID로 귀결될 수 있다.
+        assertEquals("R01", SimpleCandidateDiscrimination.selectValidatedRepresentative(new UUID(0, 1), 10, ids, "policy-v1").orElseThrow());
+        assertEquals("R16", SimpleCandidateDiscrimination.selectValidatedRepresentative(new UUID(0, 2), 10, ids, "policy-v1").orElseThrow());
+        assertEquals("R01", SimpleCandidateDiscrimination.selectValidatedRepresentative(new UUID(0, 1), 11, ids, "policy-v1").orElseThrow());
+        assertEquals("R13", SimpleCandidateDiscrimination.selectValidatedRepresentative(new UUID(0, 1), 10, ids, "policy-v2").orElseThrow());
+        assertEquals("R16", SimpleCandidateDiscrimination.selectValidatedRepresentative(new UUID(0, 1), 10,
+                List.of("R01", "R07", "R13", "R16", "R25"), "policy-v1").orElseThrow());
+    }
+
+    @Test void emptyOversizedAndInvalidSelectionInputsDoNotSelect() {
+        UUID session = new UUID(0, 1);
+        assertTrue(SimpleCandidateDiscrimination.selectValidatedRepresentative(session, 1, List.of(), "v1").isEmpty());
+        var error = assertThrows(IllegalArgumentException.class, () -> SimpleCandidateDiscrimination.selectValidatedRepresentative(
+                session, 1, List.of("R01", "R02", "R03", "R04", "R05", "R06"), "v1"));
+        assertEquals("CANDIDATE_LIMIT_POLICY_REQUIRED", error.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> SimpleCandidateDiscrimination.selectValidatedRepresentative(session, 1, List.of("R26"), "v1"));
+        assertThrows(IllegalArgumentException.class, () -> SimpleCandidateDiscrimination.selectValidatedRepresentative(session, 1, List.of("R01"), " "));
+    }
 
     // R01과 R02가 모두 후보여도 구별 근거가 없으면 판별을 보류한다.
     @Test

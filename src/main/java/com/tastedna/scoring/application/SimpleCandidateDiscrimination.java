@@ -2,6 +2,11 @@ package com.tastedna.scoring.application;
 
 import tools.jackson.databind.JsonNode;
 
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 // Simple RESULT 초기 후보의 구별 가능성과 판별 보류 사유를 표현한다.
@@ -15,6 +20,36 @@ public record SimpleCandidateDiscrimination(
 
     public static final String INSUFFICIENT_EVIDENCE =
             "INSUFFICIENT_DISCRIMINATING_EVIDENCE";
+
+    // 충분성 검증을 마친 후보만 호출자가 전달한다. 초기 후보 API에는 연결하지 않는다.
+    // UTF-8 길이 접두 인코딩과 SHA-256-v1을 고정하여 재조회·입력 순서에 따른 재추첨을 막는다.
+    public static Optional<String> selectValidatedRepresentative(
+            UUID sessionId, long submissionRevision, Collection<String> validatedCandidateIds, String ruleVersion) {
+        if (sessionId == null || submissionRevision < 0 || ruleVersion == null || ruleVersion.isBlank()
+                || validatedCandidateIds == null || validatedCandidateIds.stream().anyMatch(
+                id -> id == null || !id.matches("R(0[1-9]|1[0-9]|2[0-5])")))
+            throw new IllegalArgumentException("INVALID_REPRESENTATIVE_SELECTION_INPUT");
+        var ids = validatedCandidateIds.stream().distinct().sorted().toList();
+        if (ids.isEmpty()) return Optional.empty();
+        if (ids.size() > 5) throw new IllegalArgumentException("CANDIDATE_LIMIT_POLICY_REQUIRED");
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            for (String field : List.of("TasteDNA-representative-SHA256-v1", sessionId.toString(),
+                    Long.toString(submissionRevision), ruleVersion, Integer.toString(ids.size())))
+                updateSelectionDigest(digest, field);
+            for (String id : ids) updateSelectionDigest(digest, id);
+            int index = new BigInteger(1, digest.digest()).mod(BigInteger.valueOf(ids.size())).intValue();
+            return Optional.of(ids.get(index));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA256_UNAVAILABLE", e);
+        }
+    }
+
+    private static void updateSelectionDigest(MessageDigest digest, String field) {
+        byte[] bytes = field.getBytes(StandardCharsets.UTF_8);
+        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
+        digest.update(bytes);
+    }
 
     // 후보 간 판별 규칙이 검증되지 않은 경우 확정을 보류한다.
     // 후보가 하나만 남아 있더라도 자동으로 최종 RESULT로 확정하지 않는다.
