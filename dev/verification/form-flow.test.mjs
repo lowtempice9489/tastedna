@@ -298,3 +298,78 @@ test('saved history opens the actual report and matching API after in-memory sta
  }
  }
 });
+
+test('report survives non-auth failures in optional requests', async () => {
+ for (const failedPath of ['initial-candidates', 'matched-demo-products']) {
+  const { run, node, client, context } = screen();
+  const sections = [];
+
+  context.document.createElement = () => {
+   const element = {
+    innerHTML: '',
+    className: '',
+    setAttribute() {},
+    querySelector: () => ({})
+   };
+   sections.push(element);
+   return element;
+  };
+
+  client.request = async path => {
+   if (path.endsWith('/' + failedPath)) {
+    throw Object.assign(new Error('HTTP_500'), { status: 500 });
+   }
+   if (path.endsWith('/preference-summary')) {
+    return {
+     session: {
+      sessionId: 'owned',
+      status: 'SUBMITTED',
+      definitionId: 'def',
+      revision: 10,
+      apparelScope: 'mens'
+     },
+     title: '미니멀',
+     description: '직접 선택한 취향 기록',
+     evidence: [{
+      questionId: 'Q02',
+      prompt: '마음이 가는 스타일',
+      selections: [{ optionId: 'R01', label: '미니멀', images: [] }]
+     }]
+    };
+   }
+   if (path.endsWith('/initial-candidates')) {
+    return {
+     sessionId: 'owned',
+     definitionId: 'def',
+     revision: 10,
+     simpleRepresentative: {
+      candidateId: 'R01',
+      sources: [{ optionLabel: '미니멀' }]
+     }
+    };
+   }
+   if (path.endsWith('/matched-demo-products')) {
+    return { products: [] };
+   }
+   throw new Error(path);
+  };
+
+  run("member={email:'a@example.test'};session={sessionId:'owned',apparelScope:'mens'}");
+  await run('action(result)');
+
+  assert.notEqual(run('member'), null);
+  assert.equal(run('session.sessionId'), 'owned');
+  assert.match(node('main').innerHTML, /나의 TasteDNA 리포트/);
+  assert.match(node('main').innerHTML, /미니멀/);
+  assert.doesNotMatch(node('main').innerHTML, /FORM 로그인/);
+
+  if (failedPath === 'matched-demo-products') {
+   assert.ok(
+       sections.some(element =>
+           element.innerHTML.includes('전시 상품을 불러오지 못했어요')
+       ),
+       '상품 조회 실패 시 상품 영역에 오류 안내가 표시되어야 합니다.'
+   );
+  }
+ }
+});
