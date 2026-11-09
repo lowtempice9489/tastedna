@@ -1,7 +1,9 @@
 package com.tastedna.scoring;
 
+import com.tastedna.scoring.application.RawObservationAggregator;
 import com.tastedna.scoring.application.ResultCandidateEvidence;
 import com.tastedna.scoring.application.SimpleCandidateDiscrimination;
+import com.tastedna.scoring.application.SimpleObservationProfile;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.JsonNode;
@@ -9,6 +11,7 @@ import tools.jackson.databind.JsonNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -186,6 +189,75 @@ class SimpleCandidateDiscriminationTest {
                 "DISCRIMINATION_RULE_NOT_SUPPORTED",
                 exception.getMessage()
         );
+    }
+
+
+    // 순위형 선택과 그룹 내 비선호를 구분해 보존한다.
+    // 이 관측만으로 최종 RESULT를 확정하지 않는다.
+    @Test
+    void keepsRankedPreferenceAndNonPreferenceSeparate() {
+        String definitionId =
+                "33333333-3333-4333-8333-333333333333";
+
+        var preferred = new RawObservationAggregator.RawObservation(
+                definitionId,
+                "RANKED_COMPARISON_PREFERENCE",
+                "1",
+                "EXPLICIT_RANKED_SELECTION",
+                "Q09",
+                "C02:B",
+                2L
+        );
+
+        var notPreferred = new RawObservationAggregator.RawObservation(
+                definitionId,
+                "RANKED_COMPARISON_NON_PREFERENCE",
+                "NOT_PREFERRED",
+                "UNSELECTED_IN_RANKED_GROUP",
+                "Q09",
+                "C02:C",
+                2L
+        );
+
+        var profile = new SimpleObservationProfile(Map.of(
+                "RANKED_COMPARISON_PREFERENCE",
+                List.of(preferred),
+                "RANKED_COMPARISON_NON_PREFERENCE",
+                List.of(notPreferred)
+        ));
+
+        var review =
+                new SimpleCandidateDiscrimination.ProfileEvidenceReview(
+                        Map.of(),
+                        Map.of(),
+                        Map.of()
+                );
+
+        var readiness =
+                SimpleCandidateDiscrimination.classifyEvidenceReadiness(
+                        profile,
+                        review
+                );
+
+        assertEquals(
+                Set.of("Q09:C02:B"),
+                readiness.get("RANKED_PREFERENCE_EVIDENCE")
+        );
+
+        assertEquals(
+                Set.of("Q09:C02:C"),
+                readiness.get("RANKED_NON_PREFERENCE_EVIDENCE")
+        );
+
+        assertTrue(
+                readiness.get("OTHER_OBSERVATION").isEmpty()
+        );
+
+        var discrimination =
+                SimpleCandidateDiscrimination.unresolved(Set.of("R01"));
+
+        assertNull(discrimination.finalResult());
+        assertNull(discrimination.representativeCandidate());
     }
 
 }

@@ -364,6 +364,15 @@ public record SimpleCandidateDiscrimination(
                 "VISUAL_DEFINITION_PENDING",
                 new LinkedHashSet<>()
         );
+        // 순위형 선택과 그룹 내 비선호는 일반 선택과 구분한다.
+        result.put(
+                "RANKED_PREFERENCE_EVIDENCE",
+                new LinkedHashSet<>()
+        );
+        result.put(
+                "RANKED_NON_PREFERENCE_EVIDENCE",
+                new LinkedHashSet<>()
+        );
         result.put(
                 "OTHER_OBSERVATION",
                 new LinkedHashSet<>()
@@ -372,15 +381,29 @@ public record SimpleCandidateDiscrimination(
         for (var observations : profile.observationsByType().values()) {
             for (var observation : observations) {
 
-                if (!"EXPLICIT_SELECTION".equals(
-                        observation.evidence())) {
+
+                String evidence = observation.evidence();
+                String questionId = observation.questionId();
+                String selection = questionId + ":" + observation.optionId();
+
+                // 순위형 근거는 그룹 내 선택·비선호 사실로만 보존한다.
+                // 별도 승인 없이 후보의 지지·충돌이나 최종 점수로 변환하지 않는다.
+                if ("EXPLICIT_RANKED_SELECTION".equals(evidence)) {
+                    result.get("RANKED_PREFERENCE_EVIDENCE")
+                            .add(selection);
                     continue;
                 }
 
-                String questionId = observation.questionId();
-                String selection = questionId
-                        + ":"
-                        + observation.optionId();
+                if ("UNSELECTED_IN_RANKED_GROUP".equals(evidence)) {
+                    result.get("RANKED_NON_PREFERENCE_EVIDENCE")
+                            .add(selection);
+                    continue;
+                }
+
+                if (!"EXPLICIT_SELECTION".equals(evidence)) {
+                    continue;
+                }
+
 
                 if ("Q02".equals(questionId)) {
 
