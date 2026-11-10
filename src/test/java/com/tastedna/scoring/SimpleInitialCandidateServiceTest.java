@@ -468,6 +468,82 @@ class SimpleInitialCandidateServiceTest {
         }
     }
 
+    @Test void coreVisualRelationsFinalizeWithoutQ02AndRejectStaleImageOrScope() throws Exception {
+        UUID womens = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
+        for (var rule : List.of(List.of("M", "Q10", "J", "R03"), List.of("M", "Q10", "A", "R05"),
+                List.of("W", "Q10", "I", "R04"), List.of("W", "Q10", "A", "R05"), List.of("W", "Q05", "C", "R09"))) {
+            reset(answers);
+            UUID def = rule.getFirst().equals("M") ? definition : womens;
+            session(def, "SUBMITTED");
+            var raw = outfit(def, rule.get(1), rule.get(2), 3);
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(raw, raw)));
+            var response = service.find("member", id);
+            assertFinal(response, rule.get(3));
+            assertNull(response.simpleRepresentative());
+            assertTrue(response.candidates().getFirst().sources().isEmpty());
+            assertEquals(1, response.candidates().getFirst().evidence().positive().size());
+            assertEquals(3, response.candidates().getFirst().evidence().positive().getFirst().answerRevision());
+            assertEquals(response, service.find("member", id));
+            var stored = answers.findById(new SessionAnswerId(id.toString(), rule.get(1))).orElseThrow();
+            var question = mapper.readTree(stored.getPresentedPayload());
+            for (var option : question.path("options")) if (option.path("id").asString().equals(rule.get(2)))
+                assertTrue(Files.isRegularFile(Path.of(option.path("images").path(0).asString().replace("/assets/", ""))));
+
+            UUID other = def.equals(definition) ? womens : definition;
+            session(other, "SUBMITTED");
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(
+                    new RawObservationAggregator.RawObservation(other.toString(), raw.type(), raw.observedValue(), raw.evidence(), rule.get(1), rule.get(2), 3))));
+            assertEquals("DEFERRED", service.find("member", id).decision().status());
+            session(def, "SUBMITTED");
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(raw)));
+            outfit(def, rule.get(1), rule.get(2), 4);
+            assertTrue(service.find("member", id).candidates().isEmpty());
+            when(answers.findById(new SessionAnswerId(id.toString(), rule.get(1)))).thenReturn(Optional.of(new SessionAnswer(
+                    id.toString(), rule.get(1), stored.getAnswerPayload(), stored.getPresentedPayload().replace(".png", "-changed.png"), 3, LocalDateTime.now())));
+            assertTrue(service.find("member", id).candidates().isEmpty());
+        }
+    }
+
+    @Test void womensCoreAndExistingVisualCandidatesRemainEqualAndReproducible() throws Exception {
+        UUID def = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
+        session(def, "SUBMITTED");
+        select(def, "R02");
+        addCatalogCandidate("R13");
+        addCatalogCandidate("R17");
+        var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
+        facts.add(outfit(def, "Q05", "C", 3));
+        for (String option : List.of("A", "I", "G", "H")) facts.add(outfit(def, "Q10", option, 4));
+        var stored = answers.findById(new SessionAnswerId(id.toString(), "Q10")).orElseThrow();
+        when(answers.findById(new SessionAnswerId(id.toString(), "Q10"))).thenReturn(Optional.of(new SessionAnswer(id.toString(), "Q10",
+                "{\"selectedOptionIds\":[\"A\",\"I\",\"G\",\"H\"]}", stored.getPresentedPayload(), 4, LocalDateTime.now())));
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        var result = service.find("member", id);
+        assertFinal(result, "R04", "R05", "R09", "R13", "R17");
+        assertEquals(6, result.candidates().size());
+        assertEquals("R02", result.simpleRepresentative().candidateId());
+        Collections.reverse(facts);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        assertEquals(result, service.find("member", id));
+    }
+
+    @Test void ambiguousCoreVisualsAndQ02AloneRemainDeferred() throws Exception {
+        UUID def = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
+        session(def, "SUBMITTED");
+        for (var pair : List.of(List.of("B", "R02"), List.of("E", "R03"), List.of("L", "R08"),
+                List.of("M", "R10"), List.of("F", "R11"), List.of("P", "R12"))) {
+            reset(answers);
+            select(def, pair.get(1));
+            var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
+            facts.add(outfit(def, "Q10", pair.getFirst(), 3));
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+            var result = service.find("member", id);
+            assertFalse(result.finalResult());
+            assertEquals("DEFERRED", result.decision().status());
+            assertNull(result.decision().representativeCandidate());
+            assertEquals(1, result.candidates().size());
+        }
+    }
+
     void assertFinal(SimpleInitialCandidateService.Response response, String... allowed) {
         assertTrue(response.finalResult());
         assertEquals("FINAL", response.decision().status());

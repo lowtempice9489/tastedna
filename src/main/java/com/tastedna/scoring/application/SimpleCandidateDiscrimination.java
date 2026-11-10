@@ -20,7 +20,7 @@ public record SimpleCandidateDiscrimination(
         String reason
 ) {
 
-    public static final String RULE_VERSION = "simple-B-v1/S2-SHA256-v1/representative-SHA256-v1";
+    public static final String RULE_VERSION = "simple-B-v2-core09B/S2-SHA256-v1/representative-SHA256-v1";
 
     public static final String INSUFFICIENT_EVIDENCE =
             "INSUFFICIENT_DISCRIMINATING_EVIDENCE";
@@ -77,10 +77,15 @@ public record SimpleCandidateDiscrimination(
             case "33333333-3333-4333-8333-333333333333" -> Set.of(
                     "R01/Q09/C03:A/DIRECT_COMBINATION_PREFERENCE",
                     "R07/Q09/C03:B/DIRECT_COMBINATION_PREFERENCE",
+                    "R03/Q10/J/DIRECT_FINAL_OUTFIT_PREFERENCE",
+                    "R05/Q10/A/DIRECT_FINAL_OUTFIT_PREFERENCE",
                     "R13/Q10/D/DIRECT_FINAL_OUTFIT_PREFERENCE",
                     "R16/Q05/B/DIRECT_OUTFIT_PREFERENCE",
                     "R17/Q05/C/DIRECT_OUTFIT_PREFERENCE").contains(key);
             case "6acc799d-1348-4f34-b756-593e9f5bfd52" -> Set.of(
+                    "R04/Q10/I/DIRECT_FINAL_OUTFIT_PREFERENCE",
+                    "R05/Q10/A/DIRECT_FINAL_OUTFIT_PREFERENCE",
+                    "R09/Q05/C/DIRECT_OUTFIT_PREFERENCE",
                     "R13/Q05/B/DIRECT_OUTFIT_PREFERENCE",
                     "R13/Q10/G/DIRECT_FINAL_OUTFIT_PREFERENCE",
                     "R17/Q06/B/DIRECT_CLOTHING_PREFERENCE",

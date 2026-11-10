@@ -120,14 +120,21 @@ public class SimpleInitialCandidateService {
                         selectedResult.orElse(null), SimpleCandidateDiscrimination.RULE_VERSION), representative);
     }
 
-    // 07A에서 허용한 전체 착장의 초기 검토 관계만 연결한다. 최종 충분성이나 VERIFIED를 뜻하지 않는다.
+    // 정확한 전체 착장의 긍정 관측만 연결한다. 최종 충분성은 별도 B 정책에서 판정한다.
     private void addOutfitEntrySupport(UUID sessionId, String definitionId, List<Observation> facts,
                                       Map<String, List<Source>> support) {
         if ("33333333-3333-4333-8333-333333333333".equals(definitionId)) {
+            // 09B: 블레이저·셔츠·슬랙스와 스웨트셔츠 일상 착장을 Core 근거로 한정한다.
+            addOutfitSource(sessionId, facts, support, "Q10", "J", "R03", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/J.png");
+            addOutfitSource(sessionId, facts, support, "Q10", "A", "R05", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/Q10_A.png");
             addOutfitSource(sessionId, facts, support, "Q10", "D", "R13", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/Q10_D.png");
             addOutfitSource(sessionId, facts, support, "Q05", "B", "R16", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/male/Q05/TasteDNA_Q05_B.png");
             addOutfitSource(sessionId, facts, support, "Q05", "C", "R17", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/male/Q05/TasteDNA_Q05_C.png");
         } else if ("6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definitionId)) {
+            // 09B: 스쿨룩·일상 착장·셔링 블라우스/플레어 스커트의 직접 선택만 사용한다.
+            addOutfitSource(sessionId, facts, support, "Q10", "I", "R04", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/I.png");
+            addOutfitSource(sessionId, facts, support, "Q10", "A", "R05", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/A.png");
+            addOutfitSource(sessionId, facts, support, "Q05", "C", "R09", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/female/Q05/C.png");
             addOutfitSource(sessionId, facts, support, "Q05", "B", "R13", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/female/Q05/B.png");
             addOutfitSource(sessionId, facts, support, "Q10", "G", "R13", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/G.png");
             addOutfitSource(sessionId, facts, support, "Q06", "B", "R17", "DIRECT_CLOTHING_PREFERENCE", "/assets/gender/female/Q06/B.png");
