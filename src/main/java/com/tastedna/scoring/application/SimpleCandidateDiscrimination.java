@@ -20,7 +20,7 @@ public record SimpleCandidateDiscrimination(
         String reason
 ) {
 
-    public static final String RULE_VERSION = "simple-B-v2-core09B/S2-SHA256-v1/representative-SHA256-v1";
+    public static final String RULE_VERSION = "simple-B-v3-ranked09C/S2-SHA256-v1/representative-SHA256-v1";
 
     public static final String INSUFFICIENT_EVIDENCE =
             "INSUFFICIENT_DISCRIMINATING_EVIDENCE";
@@ -71,6 +71,10 @@ public record SimpleCandidateDiscrimination(
 
     // 출처·이미지·최신 답변 검사를 통과한 긍정 근거에만 승인된 B 정책을 적용한다.
     private static boolean sufficientVisual(UUID definition, String candidate, Source source) {
+        if ("6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definition.toString()) && "R15".equals(candidate))
+            return "Q08".equals(source.questionId()) && "C05:D".equals(source.optionId())
+                    && "RANKED_COMPARISON_PREFERENCE".equals(source.observationType())
+                    && "EXPLICIT_RANKED_SELECTION".equals(source.evidenceType()) && Integer.valueOf(1).equals(source.rank());
         if (!"EXPLICIT_SELECTION".equals(source.evidenceType())) return false;
         String key = candidate + "/" + source.questionId() + "/" + source.optionId() + "/" + source.observationType();
         return switch (definition.toString()) {

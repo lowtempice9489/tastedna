@@ -28,7 +28,12 @@ public class SimpleInitialCandidateService {
     private final SessionObservationService observations;
 
     public record Source(String questionId, String questionLabel, String optionId, String optionLabel,
-                         String observationType, String evidenceType, long answerRevision) {}
+                         String observationType, String evidenceType, long answerRevision, Integer rank) {
+        public Source(String questionId, String questionLabel, String optionId, String optionLabel,
+                      String observationType, String evidenceType, long answerRevision) {
+            this(questionId, questionLabel, optionId, optionLabel, observationType, evidenceType, answerRevision, null);
+        }
+    }
     public record Observation(String definitionId, String questionId, String optionId, String comparisonId,
                               String observationType, String observedValue, String evidenceType,
                               long answerRevision, Integer rank) {}
@@ -77,6 +82,8 @@ public class SimpleInitialCandidateService {
         for (var source : combinationSupport)
             additionalSources.computeIfAbsent("C03:A".equals(source.optionId()) ? "R01" : "R07", ignored -> new ArrayList<>()).add(source);
         addOutfitEntrySupport(sessionId, session.definitionId().toString(), facts, additionalSources);
+        var rankedSupport = womensExpressiveRomanticSupport(sessionId, session.definitionId().toString(), facts);
+        if (!rankedSupport.isEmpty()) additionalSources.put("R15", rankedSupport);
         // 승인된 진입 관계의 합집합만 조회한다. 카탈로그 등록이나 후보 그룹 자체는 진입 근거가 아니다.
         Set<String> candidateIds = new HashSet<>(directSources.keySet());
         candidateIds.addAll(additionalSources.keySet());
@@ -93,7 +100,7 @@ public class SimpleInitialCandidateService {
                     s.questionId().equals(f.questionId()) && s.optionId().equals(f.optionId())
                             && s.observationType().equals(f.observationType()) && s.evidenceType().equals(f.evidenceType())
                             && s.answerRevision() == f.answerRevision()
-                            && s.optionLabel().equals(f.observedValue()))).toList();
+                            && (s.rank() == null ? s.optionLabel().equals(f.observedValue()) : s.rank().equals(f.rank())))).toList();
             result.add(new Candidate(candidateId, definition.get().getCandidateName(), sources,
                     new CandidateEvidence(List.copyOf(positive), List.of(), unresolved, "CANDIDATE_RELATIONS_PENDING")));
         }
@@ -166,6 +173,32 @@ public class SimpleInitialCandidateService {
                             type, f.evidenceType(), f.answerRevision())).distinct().toList();
             if (!sources.isEmpty()) support.computeIfAbsent(candidateId, ignored -> new ArrayList<>()).addAll(sources);
         }
+    }
+
+    // C05의 D 최상위 선택만 인정한다. 후순위·미선택을 후보 회피로 바꾸지 않는다.
+    private List<Source> womensExpressiveRomanticSupport(UUID sessionId, String definitionId, List<Observation> facts) {
+        if (!"6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definitionId)) return List.of();
+        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), "Q08"));
+        if (answer.isEmpty()) return List.of();
+        var stored = answer.get();
+        var selection = ComparisonAnswerPayloadExtractor.extractSelections(mapper.readTree(stored.getAnswerPayload())).get("C05");
+        if (selection == null || !selection.ranked() || selection.optionIds().isEmpty()
+                || !"D".equals(selection.optionIds().getFirst())) return List.of();
+        var presented = mapper.readTree(stored.getPresentedPayload());
+        for (var group : presented.path("comparisons")) {
+            if (!"C05".equals(group.path("id").asString()) || !"RANKED_MULTI_SELECT".equals(group.path("selectionMode").asString())) continue;
+            for (var option : group.path("options")) {
+                if (!"D".equals(option.path("id").asString()) || option.path("images").size() != 1
+                        || !"/assets/gender/female/Q08/C05/Q08_C05_D.png".equals(option.path("images").path(0).asString())) continue;
+                return facts.stream().filter(f -> "Q08".equals(f.questionId()) && "C05:D".equals(f.optionId())
+                                && "RANKED_COMPARISON_PREFERENCE".equals(f.observationType())
+                                && "EXPLICIT_RANKED_SELECTION".equals(f.evidenceType()) && Integer.valueOf(1).equals(f.rank())
+                                && stored.getAnswerRevision() == f.answerRevision())
+                        .map(f -> new Source("Q08", presented.path("prompt").asString(), "C05:D", option.path("label").asString(),
+                                f.observationType(), f.evidenceType(), f.answerRevision(), f.rank())).distinct().toList();
+            }
+        }
+        return List.of();
     }
 
     private List<Source> mensBlackCombinationSupport(UUID sessionId, String definitionId, List<Observation> facts) {

@@ -524,6 +524,19 @@ class SimpleInitialCandidateServiceTest {
         Collections.reverse(facts);
         when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
         assertEquals(result, service.find("member", id));
+        addCatalogCandidate("R15");
+        facts.add(rankedRomantic(5, "D", "C"));
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        var six = service.find("member", id);
+        assertEquals(List.of("R04", "R05", "R09", "R13", "R15", "R17"),
+                SimpleCandidateDiscrimination.reviewInitialCandidates(six).validatedCandidateIds());
+        assertEquals(5, six.decision().results().size());
+        assertTrue(six.finalResult());
+        assertTrue(six.decision().results().stream().anyMatch(c -> c.candidateId().equals(six.decision().representativeCandidate())));
+        assertEquals("R02", six.simpleRepresentative().candidateId());
+        Collections.reverse(facts);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+        assertEquals(six, service.find("member", id));
     }
 
     @Test void ambiguousCoreVisualsAndQ02AloneRemainDeferred() throws Exception {
@@ -542,6 +555,101 @@ class SimpleInitialCandidateServiceTest {
             assertNull(result.decision().representativeCandidate());
             assertEquals(1, result.candidates().size());
         }
+    }
+
+    @Test void romanticRankOneFinalizesWithoutQ02AndRetainsRankAndLatestRevision() throws Exception {
+        UUID def = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
+        session(def, "SUBMITTED");
+        addCatalogCandidate("R15");
+        var old = rankedRomantic(3, "D", "B");
+        var nonPreference = new RawObservationAggregator.RawObservation(def.toString(), "RANKED_COMPARISON_NON_PREFERENCE",
+                "NOT_PREFERRED", "UNSELECTED_IN_RANKED_GROUP", "Q08", "C05:A", 3);
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(old, old, nonPreference)));
+        var result = service.find("member", id);
+        assertFinal(result, "R15");
+        assertNull(result.simpleRepresentative());
+        var evidence = result.candidates().getFirst().evidence();
+        assertEquals(1, evidence.positive().size());
+        assertEquals(1, evidence.positive().getFirst().rank());
+        assertEquals(3, evidence.positive().getFirst().answerRevision());
+        assertEquals("선택 D", evidence.positive().getFirst().optionLabel());
+        assertEquals(List.of("C05:A"), evidence.unresolved().stream().map(SimpleInitialCandidateService.Observation::optionId).toList());
+        assertTrue(evidence.avoidanceOrConflict().isEmpty());
+        assertEquals(result, service.find("member", id));
+        var current = rankedRomantic(4, "B", "D");
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(old, current)));
+        assertEquals("DEFERRED", service.find("member", id).decision().status());
+        rankedRomantic(5, "D");
+        assertTrue(service.find("member", id).candidates().isEmpty());
+        var latest = rankedRomantic(5, "D");
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(old, latest)));
+        assertEquals(5, service.find("member", id).candidates().getFirst().evidence().positive().getFirst().answerRevision());
+    }
+
+    @Test void rankedRomanticRejectsWrongImageDefinitionModeAndRawRank() throws Exception {
+        UUID def = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
+        session(def, "SUBMITTED");
+        addCatalogCandidate("R15");
+        var raw = rankedRomantic(3, "D");
+        var stored = answers.findById(new SessionAnswerId(id.toString(), "Q08")).orElseThrow();
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(raw)));
+        for (String changed : List.of(stored.getPresentedPayload().replace("Q08_C05_D.png", "Q08_C05_C.png"),
+                stored.getPresentedPayload().replace("RANKED_MULTI_SELECT", "SINGLE"))) {
+            when(answers.findById(new SessionAnswerId(id.toString(), "Q08"))).thenReturn(Optional.of(new SessionAnswer(
+                    id.toString(), "Q08", stored.getAnswerPayload(), changed, 3, LocalDateTime.now())));
+            assertTrue(service.find("member", id).candidates().isEmpty());
+        }
+        rankedRomantic(3, "D");
+        session(definition, "SUBMITTED");
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(new RawObservationAggregator.RawObservation(
+                definition.toString(), raw.type(), raw.observedValue(), raw.evidence(), "Q08", "C05:D", 3))));
+        assertTrue(service.find("member", id).candidates().isEmpty());
+        session(def, "SUBMITTED");
+        for (var invalid : List.of(
+                new RawObservationAggregator.RawObservation(def.toString(), raw.type(), "2", raw.evidence(), "Q08", "C05:D", 3),
+                new RawObservationAggregator.RawObservation(def.toString(), raw.type(), "1", "EXPLICIT_SELECTION", "Q08", "C05:D", 3),
+                new RawObservationAggregator.RawObservation(def.toString(), raw.type(), "1", raw.evidence(), "Q08", "C04:D", 3))) {
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(invalid)));
+            assertTrue(service.find("member", id).candidates().isEmpty());
+        }
+        rankedRomantic(4, "B", "C");
+        when(observations.collectRaw("member", id.toString())).thenReturn(group(List.of(raw)));
+        assertEquals("DEFERRED", service.find("member", id).decision().status());
+    }
+
+    @Test void checkedDenimOutfitsDoNotInventVintageVariantsOrMixedCandidates() throws Exception {
+        addCatalogCandidate("R14");
+        addCatalogCandidate("R19");
+        for (boolean womens : List.of(false, true)) {
+            reset(answers);
+            UUID def = womens ? UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52") : definition;
+            session(def, "SUBMITTED");
+            select(def, "R08");
+            var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
+            facts.add(outfit(def, "Q05", womens ? "E" : "D", 3));
+            facts.add(outfit(def, womens ? "Q06" : "Q10", womens ? "F" : "E", 4));
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+            var response = service.find("member", id);
+            assertEquals(List.of("R08"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+            assertEquals("DEFERRED", response.decision().status());
+            assertFalse(response.finalResult());
+            assertTrue(response.decision().results().isEmpty());
+        }
+    }
+
+    RawObservationAggregator.RawObservation rankedRomantic(long revision, String... ordered) throws Exception {
+        String line = Files.readAllLines(Path.of("src/main/resources/db/migration/V19__add_womens_simple_q08_q10.sql")).stream()
+                .filter(l -> l.startsWith("INSERT INTO td_question_definition") && l.contains("'Q08',")).findFirst().orElseThrow();
+        String json = line.substring(line.indexOf("'{") + 1, line.indexOf("}','") + 1);
+        var selections = List.of(Map.of("comparisonId", "C01", "selectedOptionId", "A"),
+                Map.of("comparisonId", "C02", "selectedOptionId", "A"), Map.of("comparisonId", "C03", "selectedOptionId", "A"),
+                Map.of("comparisonId", "C04", "selectedOptionIds", List.of("A")),
+                Map.of("comparisonId", "C05", "selectedOptionIds", List.of(ordered)));
+        when(answers.findById(new SessionAnswerId(id.toString(), "Q08"))).thenReturn(Optional.of(new SessionAnswer(id.toString(), "Q08",
+                mapper.writeValueAsString(Map.of("selections", selections)), json, revision, LocalDateTime.now())));
+        int rankIndex = List.of(ordered).contains("D") ? List.of(ordered).indexOf("D") : 0;
+        return new RawObservationAggregator.RawObservation("6acc799d-1348-4f34-b756-593e9f5bfd52", "RANKED_COMPARISON_PREFERENCE",
+                Integer.toString(rankIndex + 1), "EXPLICIT_RANKED_SELECTION", "Q08", "C05:" + ordered[rankIndex], revision);
     }
 
     void assertFinal(SimpleInitialCandidateService.Response response, String... allowed) {
