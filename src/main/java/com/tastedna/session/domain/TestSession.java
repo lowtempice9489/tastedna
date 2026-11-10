@@ -67,6 +67,9 @@ public class TestSession {
     @Column(name = "submitted_at")
     private LocalDateTime submittedAt;
 
+    @Column(name = "temporary_result_expires_at")
+    private LocalDateTime temporaryResultExpiresAt;
+
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
@@ -160,6 +163,8 @@ public class TestSession {
 
         this.status = "SUBMITTED";
         this.submittedAt = now;
+        // NULL인 과거 제출은 소급 적용하지 않는다. 보호 해제는 이 시각을 갱신하지 않는다.
+        if (mallMemberId != null) this.temporaryResultExpiresAt = now.plusDays(5);
         this.lastSeenAt = now;
     }
 

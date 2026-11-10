@@ -19,7 +19,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// V27을 별도로 적용한 테스트 DB에서만 실행하며 새 테스트 행은 매 테스트 종료 시 롤백한다.
+// V28까지 별도로 적용한 테스트 DB에서만 실행하며 새 테스트 행은 매 테스트 종료 시 롤백한다.
 @EnabledIfEnvironmentVariable(named = "RUN_RESULT_LIFECYCLE_MYSQL_TESTS", matches = "true")
 @SpringBootTest
 @Transactional
@@ -39,6 +39,33 @@ class MemberResultRetentionJpaTest {
         var session = MemberResultRetentionTest.submitted(member);
         sessions.saveAndFlush(session);
         return MemberResultRetentionTest.result(session);
+    }
+
+    @Test void expiryQueryExcludesLegacyProgressOtherMembersAndBothFormsOfProtectionWithoutDeletingHistory() {
+        String member = "expiry-" + UUID.randomUUID();
+        var expired = capture(member);
+        var legacy = capture(member);
+        var legacySession = sessions.findById(legacy.getSessionId()).orElseThrow();
+        ReflectionTestUtils.setField(legacySession, "temporaryResultExpiresAt", null);
+        var saved = capture(member);
+        saved.saveToSlot(1, LocalDateTime.now());
+        results.saveAndFlush(saved);
+        var current = capture(member);
+        current.setCurrent(LocalDateTime.now());
+        results.saveAndFlush(current);
+        var progress = capture(member);
+        var progressSession = sessions.findById(progress.getSessionId()).orElseThrow();
+        ReflectionTestUtils.setField(progressSession, "status", "IN_PROGRESS");
+        ReflectionTestUtils.setField(progressSession, "submittedAt", null);
+        ReflectionTestUtils.setField(progressSession, "temporaryResultExpiresAt", null);
+        capture("another-" + UUID.randomUUID());
+        sessions.flush();
+        entityManager.clear();
+        var ids = sessions.findTemporaryExpiryReviewIds(member, LocalDateTime.of(2026, 12, 1, 0, 0),
+                org.springframework.data.domain.PageRequest.of(0, 20));
+        assertEquals(java.util.List.of(expired.getSessionId()), ids);
+        assertEquals(5, sessions.findSimpleHistory(member).size());
+        assertNotNull(sessions.findById(legacy.getSessionId()).orElseThrow());
     }
 
     @Test void submissionDoesNotPopulateRetentionAndMembersRemainSeparated() {

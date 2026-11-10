@@ -9,7 +9,7 @@ function screen(questionScreen=false){
  const nodes=new Map();
  function node(key){
   if(!nodes.has(key))nodes.set(key,{value:'',textContent:'',disabled:false,focus(){},
-   append(){},addEventListener(event,handler){this['on'+event]=handler;},
+   replaceWith(replacement){this.replacement=replacement;this.onclick=null;},append(){},addEventListener(event,handler){this['on'+event]=handler;},
    querySelector:node,querySelectorAll:()=>[],close(){this.open=false;},
    set innerHTML(html){this.html=html;for(const match of html.matchAll(/id="([^"]+)"[^>]*?(?:value="([^"]*)")?[^>]*>/g)){
     const element=node('#'+match[1]);element.value=(match[0].match(/value="([^"]*)"/)||[])[1]||'';
@@ -30,7 +30,7 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
 
 test('female selection survives FORM login and reports server definition rejection',async()=>{
  const {run,node,calls,client}=screen();
- run("selectApparel();");node('#choose-womens').onclick();node('#choose-simple').onclick();
+ run("selectApparel();");node('#choose-womens').onclick();run('login()');
  assert.match(node('main').innerHTML,/FORM 로그인/);
  client.request=async(path,body)=>{calls.push([path,body]);if(path==='/auth/login')return {memberId:'form-a',email:'a@example.test'};if(path==='/sessions/active')return null;throw new Error('IMAGE_DEFINITION_NOT_READY');};
  node('#form-email').value='a@example.test';node('#form-password').value='test password';
@@ -132,8 +132,12 @@ test('womens card opens shared Simple mode and returns to wardrobe selection',()
  assert.match(node('main').innerHTML,/id="category-title"/);
  assert.equal(calls.length,0);
 });
-test('atelier cover retains wardrobe selection and FORM login entry without starting an anonymous assessment',()=>{
- const {run,node,calls}=screen();
+test('atelier cover reaches guest questions without member session creation',async()=>{
+ const {run,node,calls,client}=screen(true);
+ const sql=readFileSync(new URL('../../src/main/resources/db/migration/V13__add_mens_image_simple_definition.sql',import.meta.url),'utf8');
+ const questions=sql.split(/\r?\n/).filter(line=>line.startsWith('INSERT INTO td_question_definition')).map(line=>({
+  questionId:line.match(/,'(Q\d+)',/)[1],questionPayload:JSON.parse(line.slice(line.indexOf(",'{")+2,line.lastIndexOf("','{}',TRUE)")))}));
+ client.request=async path=>{calls.push([path]);return {definitionId:'33333333-3333-4333-8333-333333333333',questions};};
  run('home();');
  assert.match(node('main').innerHTML,/id="taste-guide"/);
  assert.match(node('main').innerHTML,/남성복·여성복 Simple 10문항/);
@@ -145,8 +149,10 @@ test('atelier cover retains wardrobe selection and FORM login entry without star
  assert.match(node('main').innerHTML,/id="mode-title"/);
  assert.equal(calls.length,0);
  node('#choose-simple').onclick();
- assert.match(node('main').innerHTML,/FORM 로그인/);
- assert.equal(run('returnTo'),'taste');assert.equal(calls.length,0);
+ await settle();
+ assert.equal(calls[0][0],'/guest/simple/questions?apparelScope=mens');
+ assert.equal(run('guest'),true);assert.equal(run('questions.length'),10);assert.match(node('main').innerHTML,/SIMPLE · 남성복/);
+ assert.ok(!calls.some(([path])=>path.startsWith('/sessions/')));
 });
 test('pending categories cannot enter tests and both back buttons restore the preceding screen',()=>{
  const {run,node,calls}=screen();
@@ -220,24 +226,24 @@ test('report optional requests propagate expired login instead of retaining memb
 test('mypage requires FORM login and returns without creating a test',async()=>{
  const {run,node,calls,client}=screen();
  run('openMyPage()');assert.match(node('main').innerHTML,/FORM 로그인/);assert.equal(run('returnTo'),'mypage');assert.equal(calls.length,0);
- client.request=async(path,body)=>{calls.push([path,body]);return path==='/auth/login'?{memberId:'form-a',email:'a@example.test'}:null;};
+ client.request=async(path,body)=>{calls.push([path,body]);return path==='/auth/login'?{memberId:'form-a',email:'a@example.test'}:path==='/member/results'?{current:null,saved:[],limit:5}:[];};
  node('#form-email').value='a@example.test';node('#form-password').value='test';
  node('form').onsubmit({preventDefault(){}});await settle();
  assert.match(node('main').innerHTML,/현재 조회 가능한 Simple 기록이 없습니다/);
- assert.deepEqual(calls.map(c=>c[0]),['/auth/login','/sessions/history']);
+ assert.deepEqual(calls.map(c=>c[0]),['/auth/login','/sessions/history','/member/results']);
 });
 test('mypage only shows server-verified records and routes resume and submitted results',async()=>{
  const {run,node,calls,client}=screen();
- client.request=async(path,body)=>{calls.push([path,body]);return path==='/sessions/history'?[{sessionId:'active',mode:'SIMPLE',apparelScope:'mens',status:'IN_PROGRESS',startedAt:'2026-01-02T00:00:00Z'},{sessionId:'saved',mode:'SIMPLE',apparelScope:'womens',status:'SUBMITTED',submittedAt:'2026-01-01T00:00:00Z'}]:{evidence:[{questionId:'Q02',selections:[{label:'미니멀'}]}]};};
+ client.request=async(path,body)=>{calls.push([path,body]);return path==='/member/results'?{current:null,saved:[],limit:5}:path==='/sessions/history'?[{sessionId:'active',mode:'SIMPLE',apparelScope:'mens',status:'IN_PROGRESS',startedAt:'2026-01-02T00:00:00Z'},{sessionId:'saved',mode:'SIMPLE',apparelScope:'womens',status:'SUBMITTED',submittedAt:'2026-01-01T00:00:00Z'}]:{evidence:[{questionId:'Q02',selections:[{label:'미니멀'}]}]};};
  run("member={email:'a@example.test'};session={sessionId:'saved'};loadSession=async id=>{globalThis.loaded=id;};");
  await run('openMyPage()');
  assert.match(node('main').innerHTML,/진행 중/);assert.match(node('main').innerHTML,/제출 완료/);
  assert.match(node('main').innerHTML,/미니멀/);assert.match(node('main').innerHTML,/여성복 Simple/);
  const dashboard=node('main').innerHTML;
  const savedSection=dashboard.slice(dashboard.indexOf('<section class="mypage-records" id="mypage-saved"'),dashboard.indexOf('<section class="mypage-records" id="mypage-recent"'));
- assert.match(savedSection,/여성복 Simple/);assert.doesNotMatch(savedSection,/남성복 Simple|이어서 답하기/);
+ assert.match(savedSection,/직접 저장한 결과가 없습니다/);assert.doesNotMatch(savedSection,/여성복 Simple|남성복 Simple|이어서 답하기/);
  assert.match(dashboard,/내 취향 한눈에/);assert.match(dashboard,/마이페이지 메뉴/);
- node('#mypage-saved-1').onclick();await settle();assert.equal(run('loaded'),'saved');
+ node('#mypage-record-1').onclick();await settle();assert.equal(run('loaded'),'saved');
  node('#mypage-retest').onclick();assert.match(node('main').innerHTML,/남성복|여성복/);
  run('session=null');await run('openMyPage()');assert.match(node('main').innerHTML,/최근 완료한 취향 기록/);
  node('#mypage-latest').onclick();await settle();assert.equal(run('loaded'),'saved');
@@ -270,6 +276,7 @@ test('saved history opens the actual report and matching API after in-memory sta
  const selections=labels.map((label,i)=>({optionId:'R0'+(i+1),label,images:[]}));
  client.request=async(path,body)=>{
   calls.push([path,body]);
+  if(path==='/member/results')return {current:null,saved:[{sessionId:saved.sessionId,saved:true,current:false}],limit:5};
   if(path==='/sessions/history')return [saved];
   if(path.endsWith('/answers'))return {session:saved,answers:{}};
   if(path.endsWith('/questions'))return {questions:[]};
@@ -386,7 +393,8 @@ test('actual male R22 and female R09 FINAL responses remain separate from Q02 R0
    decision:{status:'FINAL',representativeCandidate:rep,results:ids.map((id,i)=>({candidateId:id,candidateName:names[i],evidence:{status:id==='R22'?'SIMPLE_COMPOSITE_PREFERENCE_INFERENCE':'CANDIDATE_RELATIONS_PENDING',positive:[{questionId:'Q08',optionId:'C01:B',optionLabel:'비교 선택'}]}}))}};
   client.request=async(path,body)=>{
    calls.push([path,body]);
-   if(path==='/sessions/history')return [saved];
+   if(path==='/member/results')return {current:null,saved:[{sessionId:saved.sessionId,saved:true,current:false}],limit:5};
+  if(path==='/sessions/history')return [saved];
    if(path.endsWith('/answers'))return {session:saved,answers:{}};
    if(path.endsWith('/questions'))return {questions:[]};
    if(path.endsWith('/preference-summary'))return {session:saved,title:'직접 선택 기록',description:'',evidence:[{questionId:'Q02',selections:[{optionId:'R01',label:'미니멀',images:[]}]},{questionId:'Q01',selections:[{optionId:'A',label:'블랙',images:[]}]}]};
@@ -438,12 +446,66 @@ test('mypage FINAL lookup expiry clears member data while ordinary failure prese
  for(const status of [401,500]){
   const {run,node,client}=screen();
   client.request=async path=>{
+   if(path==='/member/results')return {current:null,saved:[],limit:5};
    if(path==='/sessions/history')return [{sessionId:'saved',status:'SUBMITTED',apparelScope:'mens',submittedAt:'2026-11-10T00:00:00Z'}];
    if(path.endsWith('/preference-summary'))return {evidence:[]};
    throw Object.assign(new Error('lookup failed'),{status});
   };
   run("member={email:'a@example.test'}");await run('openMyPage()');
   if(status===401){assert.equal(run('member'),null);assert.match(node('main').innerHTML,/FORM 로그인/);assert.doesNotMatch(node('main').innerHTML,/저장된 테스트 기록/);}
-  else {assert.match(node('main').innerHTML,/저장된 테스트 기록/);assert.doesNotMatch(node('main').innerHTML,/종합 RESULT/);}
+  else {assert.match(node('main').innerHTML,/최근 테스트 기록/);assert.doesNotMatch(node('main').innerHTML,/종합 RESULT/);}
+ }
+});
+
+
+test('report management permits deferred save but only FINAL can newly become current; legacy current can clear',async()=>{
+ for(const [isFinal,current] of [[false,false],[true,false],[false,true]]){
+  const {run,node,client,calls}=screen();
+  const initial={finalResult:isFinal,decision:{status:isFinal?'FINAL':'DEFERRED',representativeCandidate:isFinal?'R01':null}};
+  client.request=async(path,body)=>{calls.push([path,body]);return {saved:false,current,result:initial};};
+  run("member={email:'a@example.test'}");await run("renderResultManagement('result-id')");
+  const html=node('#report-management').innerHTML;
+  assert.match(html,/id="result-save"/);
+  if(isFinal||current)assert.match(html,/id="result-current"/);
+  else {assert.doesNotMatch(html,/id="result-current"/);assert.match(html,/결과 저장은 가능합니다/);}
+  node('#result-save').onclick();await settle();
+  assert.ok(calls.some(([path,body])=>path==='/member/results/result-id/save'&&body));
+  if(isFinal||current){node('#result-current').onclick();await settle();
+   assert.ok(calls.some(([path,body])=>path===(current?'/member/results/current/clear':'/member/results/result-id/current')&&body));}
+  else assert.ok(!calls.some(([path,body])=>path.endsWith('/current')&&body));
+ }
+});
+
+test('mypage saved deferred record cannot newly become current but remains readable and removable',async()=>{
+ const {run,node,client,calls}=screen();
+ const record={sessionId:'deferred',status:'SUBMITTED',apparelScope:'womens',definitionId:'def',revision:10};
+ const initial={...record,finalResult:false,decision:{status:'DEFERRED',results:[]}};
+ client.request=async(path,body)=>{calls.push([path,body]);
+  if(path==='/sessions/history')return [record];
+  if(path==='/member/results')return {current:null,saved:[{sessionId:record.sessionId,saved:true,result:initial}],limit:5};
+  if(path.endsWith('/preference-summary'))return {session:record,evidence:[]};
+  if(path.endsWith('/initial-candidates'))return initial;
+  return {};
+ };
+ run("member={email:'a@example.test'};loadSession=async id=>{globalThis.loaded=id;}");await run('myPage()');
+ assert.match(node('#saved-current-0').replacement.textContent,/미확정 · 현재 설정 불가/);
+ assert.equal(node('#saved-current-0').onclick,null);
+ node('#mypage-saved-0').onclick();await settle();assert.equal(run('loaded'),'deferred');
+ node('#saved-remove-0').onclick();await settle();
+ assert.ok(calls.some(([path,body])=>path==='/member/results/deferred/unsave'&&body));
+ assert.ok(!calls.some(([path,body])=>path.endsWith('/current')&&body));
+});
+
+test('guest result uses response bundle only and offers no retention or transfer actions',async()=>{
+ for(const scope of ['mens','womens']){
+  const {run,node,client,calls}=screen();
+  client.request=async(path)=>{calls.push([path]);throw new Error('Unexpected persisted guest request');};
+  run(`guest=true;session={sessionId:'transient',status:'SUBMITTED',apparelScope:'${scope}',definitionId:'def',revision:10};
+   guestResult={summary:{session,title:'직접 선호',description:'',evidence:[]},initial:{...session,finalResult:false,decision:{status:'DEFERRED',results:[]}},products:{products:[]}};`);
+  await run('result()');
+  assert.equal(calls.length,0);
+  assert.match(node('#report-management').innerHTML,/계정 저장·현재 설정·로그인 후 이전은 지원하지 않습니다/);
+  assert.doesNotMatch(node('#report-management').innerHTML,/id="result-save"|id="result-current"/);
+  assert.equal(node('#download').hidden,true);
  }
 });

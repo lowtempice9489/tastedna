@@ -78,6 +78,15 @@ class MemberResultRetentionTest {
         assertThrows(IllegalStateException.class, () -> result(progress));
     }
 
+    @Test void newExpiryMigrationHasNoBackfillOrDefaultForHistoricalSubmissions() throws Exception {
+        String sql = Files.readString(Path.of("src/main/resources/db/migration/V28__add_temporary_result_expiry.sql"))
+                .replaceAll("(?m)--.*$", "").strip().toUpperCase(java.util.Locale.ROOT);
+        assertTrue(sql.startsWith("ALTER TABLE TD_TEST_SESSION"));
+        assertTrue(sql.contains("TEMPORARY_RESULT_EXPIRES_AT DATETIME(6) NULL"));
+        assertFalse(java.util.regex.Pattern.compile("\\b(UPDATE|INSERT|DELETE|DROP|TRUNCATE|DEFAULT)\\b").matcher(sql).find());
+        assertEquals(1, sql.chars().filter(c -> c == ';').count());
+    }
+
     @Test void migrationOnlyCreatesManagementTableWithBoundedIndependentKeys() throws Exception {
         String sql = Files.readString(Path.of("src/main/resources/db/migration/V27__create_member_result_retention.sql"));
         assertTrue(sql.contains("UNIQUE (mall_member_id, saved_slot)"));

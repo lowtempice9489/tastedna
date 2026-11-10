@@ -1,6 +1,13 @@
 package com.tastedna.scoring;
 
 import com.tastedna.definition.domain.QuestionDefinition;
+import com.tastedna.definition.domain.QuestionDefinitionId;
+import com.tastedna.definition.domain.TestDefinition;
+import com.tastedna.definition.persistence.TestDefinitionRepository;
+import com.tastedna.demo.DemoProduct;
+import com.tastedna.demo.DemoProductRepository;
+import com.tastedna.demo.DemoProductMatchService;
+import com.tastedna.session.application.GuestSimpleService;
 import com.tastedna.definition.persistence.QuestionDefinitionRepository;
 import com.tastedna.scoring.application.*;
 import com.tastedna.scoring.domain.ResultCandidate;
@@ -742,7 +749,64 @@ class SimpleInitialCandidateServiceTest {
         assertFalse(mens.candidates().stream().anyMatch(c -> c.candidateId().equals("R21")));
     }
 
+    SessionObservationService scenarioObservations;
     final List<SessionAnswer> scenarioAnswers = new ArrayList<>();
+
+    // 기존 실제 마이그레이션 기반 10문항 fixture와 계산 서비스를 그대로 사용한다.
+    @ParameterizedTest
+    @CsvSource({"M,Q02/R03 Q10/J,R03", "W,Q02/R09 Q05/C,R09"})
+    void guestTenAnswersUseRealObservationsResultsAndProductsWithoutMemberPersistence(String scope, String choices, String style) throws Exception {
+        var real = storedScenario(scope, choices);
+        var defId = scope.equals("M") ? definition.toString() : "6acc799d-1348-4f34-b756-593e9f5bfd52";
+        var definitions = mock(TestDefinitionRepository.class);
+        var def = mock(TestDefinition.class);
+        when(def.getDefinitionId()).thenReturn(defId);
+        when(def.getTestMode()).thenReturn("SIMPLE");
+        when(def.getQuestionCount()).thenReturn((short) 10);
+        when(definitions.findById(defId)).thenReturn(Optional.of(def));
+        var list = new ArrayList<QuestionDefinition>();
+        var input = new LinkedHashMap<String, JsonNode>();
+        for (var answer : scenarioAnswers) {
+            String q = answer.getId().getQuestionId();
+            var item = questions.findByIdDefinitionIdAndIdQuestionId(defId, q).orElseThrow();
+            when(item.getId()).thenReturn(new QuestionDefinitionId(defId, q));
+            when(item.getDisplayOrder()).thenReturn(Short.parseShort(q.substring(1)));
+            when(item.isRequired()).thenReturn(true);
+            list.add(item);
+            input.put(q, mapper.readTree(answer.getAnswerPayload()));
+        }
+        when(questions.findByIdDefinitionIdOrderByDisplayOrderAsc(defId)).thenReturn(list);
+        var productRepo = mock(DemoProductRepository.class);
+        var product = mock(DemoProduct.class);
+        when(product.getProductId()).thenReturn("guest-product");
+        when(product.getStyleCodes()).thenReturn(Set.of(style));
+        when(product.getColorCodes()).thenReturn(Set.of("A"));
+        when(product.getApparelScope()).thenReturn(DemoProduct.ApparelScope.UNISEX);
+        when(productRepo.findMatchingStyles(any())).thenReturn(List.of(product));
+        var sessionRepo = mock(TestSessionRepository.class);
+        var guest = new GuestSimpleService(questions, definitions, scenarioObservations, real,
+                new PreferenceSummaryService(sessionRepo, answers, sessions, mapper),
+                new DemoProductMatchService(sessions, answers, scenarioObservations, productRepo, mapper), mapper);
+        var apparel = scope.equals("M") ? ApparelScope.mens : ApparelScope.womens;
+        assertEquals(10, guest.questions(apparel).questions().size());
+        clearInvocations(answers, sessions, sessionRepo);
+        var response = guest.submit(apparel, input);
+        assertEquals(10, response.summary().evidence().stream().map(PreferenceSummaryService.Evidence::questionId).distinct().count());
+        assertTrue(response.initial().finalResult());
+        assertTrue(response.initial().candidates().stream().anyMatch(c -> c.candidateId().equals(style)));
+        assertEquals(1, response.products().products().size());
+        assertTrue(response.products().products().getFirst().evidence().stream().anyMatch(e -> style.equals(e.styleCode())));
+        assertEquals(10, response.initial().revision());
+        verifyNoInteractions(answers, sessions, sessionRepo);
+        var invalid = new LinkedHashMap<>(input);
+        invalid.put("Q05", mapper.readTree("{\"selectedOptionId\":\"NOT_AN_OPTION\"}"));
+        assertEquals("INVALID_ANSWER", assertThrows(ResponseStatusException.class, () -> guest.submit(apparel, invalid)).getReason());
+        invalid.put("Q05", mapper.nullNode());
+        assertEquals("INVALID_ANSWER", assertThrows(ResponseStatusException.class, () -> guest.submit(apparel, invalid)).getReason());
+        invalid.remove("Q10");
+        assertEquals("SIMPLE_ANSWERS_INCOMPLETE", assertThrows(ResponseStatusException.class, () -> guest.submit(apparel, invalid)).getReason());
+        verifyNoInteractions(answers, sessions, sessionRepo);
+    }
 
     String neutralChoice(String scope, String choice) {
         String q = choice.substring(0, 3);
@@ -851,6 +915,7 @@ class SimpleInitialCandidateServiceTest {
             return resolved;
         });
         var raw = new SessionObservationService(answers, repository, new DirectObservationCollector(resolver), mapper);
+        scenarioObservations = raw;
         var direct = new StyleCoreCandidateService(raw, mapper, mappings, null, null, null, null);
         return new SimpleInitialCandidateService(sessions, answers, questions, direct, catalog, mapper, raw);
     }

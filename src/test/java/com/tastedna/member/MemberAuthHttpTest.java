@@ -10,6 +10,8 @@ import com.tastedna.scoring.api.PreferenceSummaryController;
 import com.tastedna.scoring.application.PreferenceSummaryService;
 import com.tastedna.session.api.*;
 import com.tastedna.session.application.TestSessionService;
+import com.tastedna.session.application.MemberResultService;
+import com.tastedna.session.application.GuestSimpleService;
 import com.tastedna.session.persistence.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,11 +34,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 
 // 실제 필터·세션·CSRF·컨트롤러·서비스를 검증한다. Repository만 대역이므로 MySQL 통합 테스트는 아니다.
-@WebMvcTest(controllers = {MemberAuthController.class, TestSessionController.class,
+@WebMvcTest(controllers = {MemberAuthController.class, TestSessionController.class, MemberResultController.class, GuestSimpleController.class,
         ImageAssessmentController.class, PreferenceSummaryController.class, com.tastedna.scoring.api.SimpleInitialCandidateController.class,
         com.tastedna.demo.DemoProductMatchController.class,
         com.tastedna.config.FormClientConfigController.class, com.tastedna.demo.DemoProductController.class})
-@Import({MemberSecurityConfig.class, MemberAuthService.class, TestSessionService.class, PreferenceSummaryService.class,
+@Import({MemberResultService.class, GuestSimpleService.class, MemberSecurityConfig.class, MemberAuthService.class, TestSessionService.class, PreferenceSummaryService.class,
         com.tastedna.scoring.application.SimpleInitialCandidateService.class, com.tastedna.demo.DemoProductMatchService.class})
 @ActiveProfiles("member-auth")
 class MemberAuthHttpTest {
@@ -48,6 +50,7 @@ class MemberAuthHttpTest {
     @MockitoBean QuestionDefinitionRepository questions;
     @MockitoBean TestSessionRepository sessions;
     @MockitoBean SessionAnswerRepository answers;
+    @MockitoBean MemberResultRetentionRepository retention;
     @MockitoBean AuthAttemptLimiter limiter;
     @MockitoBean com.tastedna.demo.DemoProductRepository products;
     @MockitoBean com.tastedna.scoring.application.StyleCoreCandidateService initialCandidates;
@@ -56,6 +59,21 @@ class MemberAuthHttpTest {
     private final Map<String, FormMember> stored = new HashMap<>();
     private static final String PASSWORD = "a long test password";
     private record Browser(MockHttpSession session, String token) {}
+
+    @Test void guestEndpointsDoNotOpenMemberHistoryOrManagementAndStillRequireCsrf() throws Exception {
+        mvc.perform(get("/api/v1/member/results")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/sessions/history")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/v1/member/results/" + UUID.randomUUID() + "/save").with(csrf()))
+                .andExpect(status().isUnauthorized());
+        // 인증 없이 정의 조회 서비스까지 도달하되, 준비되지 않은 정의는 기존 422 계약을 따른다.
+        mvc.perform(get("/api/v1/guest/simple/questions").param("apparelScope", "mens"))
+                .andExpect(status().is(422));
+        mvc.perform(post("/api/v1/guest/simple/submit").contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/guest/simple/submit").with(csrf()).contentType("application/json").content("{}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(retention, answers, sessions);
+    }
 
     @BeforeEach void prepare() {
         stored.clear();
@@ -329,6 +347,8 @@ class MemberAuthHttpTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.answers.Q10.selectedOptionId").value("J"));
         mvc.perform(protectedPost("/api/v1/sessions/" + id + "/submit", browser).content("{\"expectedRevision\":10}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SUBMITTED"));
+        verifyNoInteractions(retention);
+        assertEquals(session.getSubmittedAt().plusDays(5), session.getTemporaryResultExpiresAt());
         mvc.perform(get("/api/v1/sessions/" + id + "/preference-summary").session(browser.session()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DIRECT_PREFERENCE_SUMMARY"))
                 .andExpect(jsonPath("$.comprehensiveResult").value(false));
@@ -340,7 +360,8 @@ class MemberAuthHttpTest {
                 .andExpect(jsonPath("$.decision.status").value("DEFERRED"))
                 .andExpect(jsonPath("$.decision.results").isEmpty())
                 .andExpect(jsonPath("$.decision.missingRequirements[0]").value("MAPPED_DIRECT_PREFERENCE_EVIDENCE"));
-        verify(initialCandidates).extractCompatibleDirectEvidence(eq(memberId), eq(id), eq(definitionId), any(), any());
+        verify(candidateObservations).collectRaw(memberId, id);
+        verify(initialCandidates).extractCompatibleDirectEvidence(eq(definitionId), any(), any(), any());
         when(answers.findById(new com.tastedna.session.domain.SessionAnswerId(id, "Q06"))).thenReturn(Optional.of(saved.get("Q06")));
         mvc.perform(get("/api/v1/sessions/" + id + "/matched-demo-products").session(browser.session()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.matchType").value("EXPLICIT_STYLE_ATTRIBUTE"))

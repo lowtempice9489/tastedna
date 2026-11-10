@@ -1,93 +1,130 @@
-# TasteDNA 결과 생명주기 계약 v0.1 — RESULT-12A
+# TasteDNA 결과 생명주기 계약 v0.1 — RESULT-12C 현행 갱신
 
-기준: `feature/result-finalization`, `054d83a` 이후 작업. 기획 기록 08 원문과 이번 사용자 지시를 대조했다. 이번 구현은 **DB/JPA 모델**이며 저장·현재 설정 HTTP API, 화면, 자동 만료는 아직 없다.
+기준 브랜치 `feature/result-finalization`, 작업 시작 HEAD `e17164eed13b7c5e5d8a280ab2cba5d4190348d7`.
+기획 기록 08과 이후 사용자 결정 중 **RESULT-12C 지시가 현행 정책**이다. 문서 경로는 유지한다.
 
-## 1. 세 가지 독립된 행동
+설계 이력: 12A에서 V27/JPA 보관 모델을 도입했고, 12B에서 회원 관리 API·FORM 화면과 비회원 요청 내 계산을 연결했다. `affe7d7`의 FINAL 신규 현재 설정 제한 및 `e17164e`의 미확정 설정 버튼 숨김을 유지한다. 12C는 신규 회원 제출의 5일 만료 **판별·검토 대상 조회**를 추가한다. 물리 삭제, 스케줄러, 만료 결과의 화면 숨김 또는 조회·저장 차단은 구현하지 않는다.
 
-| 구분 | 보관 위치 / 정책 | 12A 구현 상태 |
+## 1. 현행 정책과 구현 상태
+
+| 개념 | 정책 | 현행 구현 |
 |---|---|---|
-| 테스트 이력 | 기존 `td_test_session`, `td_session_answer` | 그대로 유지. 제출만으로 보관 행 생성 안 함 |
-| 명시적 저장 | `td_member_result_retention.saved_slot/saved_at` | 1~5 슬롯 모델과 DB 제약. 사용자 저장 경로는 12B |
-| 현재 TasteDNA | 같은 행의 `current_marker/current_since` | 회원당 최대 하나. 설정·교체·해제 경로는 12B |
+| 테스트 이력 | 제출 ≠ 저장 ≠ 현재 설정 | 기존 세션·답변 유지, 제출만으로 보관 행/슬롯/현재 설정을 만들지 않음 |
+| 명시적 저장 | 회원당 최대 5개, 직접 저장·해제 | V27 슬롯 제약 + 회원 잠금 관리 API/화면. 가득 차도 새 테스트 허용, 자동 교체 없음 |
+| 현재 TasteDNA | 회원당 최대 1개, 직접 설정·변경·해제 | 저장과 독립적. 새 제출로 자동 변경하지 않음 |
+| FINAL 미확정 결과 | 저장 가능, 신규 현재 설정 금지 | 서버 409 `CURRENT_TASTEDNA_REQUIRES_FINAL`, 화면 설정 버튼 미노출. 과거 미확정 현재 기록은 자동 변경하지 않음 |
+| 회원 미보호 완료 결과 | 제출부터 5일 | 신규 적용 표식이 있는 세션만 만료 판별. 저장 또는 현재면 보호 |
+| 비회원 | 테스트·제출 직후 결과 확인만 가능, 보존 없음 | 남녀 Simple 요청 내 메모리 계산. 회원 세션/답변/보관 테이블에 쓰지 않음 |
 
-현재만 지정 / 저장만 지정 / 둘 다 / 둘 다 아님을 표현할 수 있다. 새 테스트는 슬롯이 가득 차도 진행할 수 있다. 새 제출로 저장하거나 현재를 교체하지 않는다. 저장 해제는 현재를 해제하지 않고, 현재 해제는 저장을 해제하지 않는다. 보호 의사가 하나라도 있으면 5일 경과와 관계없이 보존한다.
+리포트와 마이페이지는 현재 TasteDNA / 명시적 저장 / 최근 테스트 이력을 구분한다. 과거 ‘저장된 테스트 9개’는 제출 이력이었으며, 9개를 명시적 저장으로 자동 전환하지 않는다. 저장만/현재만/둘 다/둘 다 아님을 표현할 수 있다.
 
-기존 마이페이지의 ‘저장된 테스트’는 `findSimpleHistory()`의 제출 이력 표현이다. 이번에 UI나 조회 API의 뜻을 변경하지 않으며, 12C에서 명시적 저장과 이력 문구/목록을 구분해야 한다.
+## 2. 데이터와 참조 관계
 
-## 2. 기존 자료와 신규 모델
+- `td_test_session`: 회원, 정의, 의류 범위, 상태, revision, submitted_at, V28의 temporary_result_expires_at.
+- `td_session_answer`: `(session_id, question_id)`별 최신 `answer_payload`, 당시 `presented_payload`, `answer_revision`. 수정 이력 전체를 보존하는 테이블은 아니며 제출 뒤 답변 수정은 기존 서비스가 금지한다.
+- `td_result_candidate`: R01~R25 카탈로그. 이번 작업은 카탈로그와 판별 규칙을 변경하지 않는다.
+- Raw 관측과 상품 매칭은 원본 답변·제시 정의·관측 규칙에 의존한다. 결과별 Raw 영속 복사본을 추가하지 않는다.
+- 세션의 `resultId`만으로 현재 FINAL을 보관하지 않는다.
 
-기존 세션에는 회원·정의·의류 범위·상태·revision·submittedAt이 있다. 답변은 `(session_id, question_id)`당 최신 `answer_payload`, `presented_payload`, `answer_revision`을 저장한다. 제출 후 기존 서비스가 답변 수정을 금지한다. 과거 수정 이력을 별도로 저장하는 구조는 아니다.
+### V27 보관 모델 (변경 없음)
 
-RESULT 카탈로그는 `td_result_candidate`이며 현재 `SimpleInitialCandidateService.find()`는 저장 응답에서 Raw와 FINAL을 재계산한다. `TestSession.resultId`는 현재 FINAL 응답을 영속 보존하는 필드가 아니다. 같은 규칙 버전의 재현성과 규칙 변경 후 과거 결과 보존은 다르다.
+| 컬럼 | 의미 |
+|---|---|
+| session_id (PK), mall_member_id | 본인 원본 세션 참조, 동일 세션 중복 보관 방지 |
+| submission_revision, rule_version | 캡처한 제출 revision과 실제 판별 버전 |
+| result_snapshot (JSON), captured_at | 서버 판별 응답 전체 및 최초 캡처 UTC 시각. 원본 답변 복제 아님 |
+| saved_slot / saved_at | NULL 또는 슬롯 1~5와 저장 시각 |
+| current_marker / current_since | NULL 또는 1과 현재 설정 시각 |
+| version | JPA 낙관적 잠금 |
 
-V27은 다음 **한 테이블만 CREATE**한다. 기존 테이블 ALTER/DML, 데이터 복사, 자동 저장 전환은 없다.
+UNIQUE `(mall_member_id, saved_slot)` 및 CHECK 1~5, UNIQUE `(mall_member_id, current_marker)` 및 CHECK=1, 상태·시각 NULL 짝 제약을 유지한다. 슬롯은 순위가 아니다.
 
-| 컬럼 | 형식 | 의미 |
-|---|---|---|
-| session_id | CHAR(36), PK | 원본 세션. 동일 세션 중복 보관 행 방지 |
-| mall_member_id | VARCHAR(128) | 기존 쇼핑몰 회원 식별자. 클라이언트가 지정하는 소유자가 아님 |
-| submission_revision | BIGINT | 캡처한 제출 revision |
-| rule_version | VARCHAR(255) | 캡처 시 실제 판별 버전 |
-| result_snapshot | JSON | 그 시점의 서버 판별 응답 보존용. 답변 JSON 복제용이 아님 |
-| captured_at | DATETIME(6) | 최초 캡처 UTC 시각 |
-| saved_slot / saved_at | INT NULL / DATETIME(6) NULL | 슬롯 1~5, 명시적 저장 시각. 둘 다 NULL이면 미저장 |
-| current_marker / current_since | INT NULL / DATETIME(6) NULL | marker=1이면 현재. 둘 다 NULL이면 현재 아님 |
-| version | BIGINT | JPA 낙관적 잠금 버전 |
+보관 `(session_id, mall_member_id)` → 세션 소유자 UNIQUE의 FK는 `ON DELETE RESTRICT`다. V4 답변 → 세션 FK는 `ON DELETE CASCADE`다. 따라서 원본 세션 삭제는 답변까지 제거한다. 보관 FK만으로 답변 직접 삭제를 막지는 못한다. 기존 FORM 회원과 외부 쇼핑몰 식별자 경계를 바꾸거나 새 회원 FK를 추가하지 않는다.
 
-`(session_id, mall_member_id)`는 V4의 기존 `uq_td_test_session_owner`에 FK로 연결한다. 따라서 다른 회원의 세션을 자기 보관 행으로 연결할 수 없다. FK는 RESTRICT이고 cascade 삭제는 없다. 문자열 collation은 부모와 같은 `utf8mb4_unicode_ci`다. 기존 외부 쇼핑몰 식별자 경계를 유지하기 위해 FORM 회원 FK를 기존 세션에 추가하지 않는다.
+### V28 신규 적용 경계
 
-DB 한도:
+`V28__add_temporary_result_expiry.sql`은 세션에 nullable `temporary_result_expires_at DATETIME(6)`과 `(mall_member_id, status, temporary_result_expires_at)` 조회 인덱스만 추가한다. DEFAULT, UPDATE, 데이터 복사·삭제는 없다.
 
-- UNIQUE `(mall_member_id, saved_slot)` + CHECK 1~5. NULL은 미저장으로 여러 행에 허용된다. 슬롯 번호는 순위나 자동 교체 순서가 아니다.
-- UNIQUE `(mall_member_id, current_marker)` + CHECK marker=1. 회원당 현재 설정 최대 하나.
-- 두 상태와 시각의 NULL 일치 CHECK. 0/6 등의 슬롯이나 다른 current marker 거부.
-- PK로 같은 세션 중복 행 방지. 무보호 행 자체는 허용하지만 저장 수에 포함하지 않는다.
+- V28 이전 제출의 값은 NULL이며 `LEGACY_EXEMPT`로 남는다. 기존 9개를 포함한 과거 제출에 소급 적용하지 않는다.
+- 새 코드의 회원 `TestSession.submit(now)`만 `submitted_at + 5일`을 기록한다. 기존 진행 중 세션이 배포 뒤 새로 제출되면 적용된다.
+- 배포 중 구 코드가 제출해 NULL인 세션도 보수적으로 과거 예외로 남긴다. 나중에 일괄 backfill하지 않는다.
+- 비회원의 일시적 세션 객체는 회원 ID가 NULL이며 적용 시각도 NULL이다. 객체를 DB에 저장하지 않는다.
+- 저장·현재 설정과 해제는 submitted_at 및 expires_at을 수정하지 않는다.
+- V28 적용 전 새 엔티티로 서버를 실행하지 않는다. 실제 적용 대상은 검증 DB `tastedna_test`인지 확인한다. 기존 V1~V27 체크섬과 사용자 데이터는 유지한다.
 
-`MemberResultRetention`은 본인 소유의 SUBMITTED 세션만 캡처하며 revision을 복사한다. `saveToSlot/removeSaved/setCurrent/clearCurrent/isProtected`가 두 상태를 독립적으로 다룬다. JPA 필드와 제약을 제공할 뿐, 현재 설정 교체 트랜잭션이나 API를 구현한 것은 아니다.
+## 3. 구현된 회원 서비스와 API
 
-## 3. 보관 결과 재구성과 스냅샷 경계
+`MemberResultService`와 `MemberResultController`를 사용한다. 모두 기존 인증 principal의 회원 ID와 소유권 경계를 유지한다.
 
-원본 응답과 제시된 질문은 기존 세션·답변을 참조한다. 신규 JSON은 규칙 변경으로 과거 FINAL이 달라지는 것을 막기 위해 **판별 응답만** 보존한다. 12B 최초 명시적 보호 시 서버가 계산한 `SimpleInitialCandidateService.Response` 전체를 직렬화하는 계약으로 한다. 여기에는 직접 대표, decision, 실제 후보 근거·revision 및 판별 버전이 포함된다. FINAL 여부는 저장 자격과 동일시하지 않는다. 제출된 DEFERRED 응답도 임의 FINAL로 바꾸지 않는다.
+| HTTP 경로 (`/api/v1/member/results` 기준) | 동작 |
+|---|---|
+| GET (root) | 현재 설정 + 저장 목록 + limit=5 |
+| GET /current | 현재 항목 또는 없음 |
+| GET /{id} | 본인 완료 세션의 관리 상태 |
+| POST /{id}/save | 저장, 중복 요청은 멱등, 6번째는 409 RESULT_STORAGE_FULL |
+| POST /{id}/unsave | 저장만 해제, 현재 설정·원본 유지 |
+| POST /{id}/current | FINAL 검증 뒤 현재 지정/변경 |
+| POST /current/clear | 현재만 해제, 저장·원본 유지 |
 
-12A 생성자는 스냅샷 저장 구조만 제공한다. 응답의 sessionId/definitionId/revision/ruleVersion 일치 검증, JSON 생성, 저장 결과 우선 조회는 **12B 미구현 책임**이다. 클라이언트 JSON을 그대로 보관하면 안 된다. 기존 행 재저장·현재 전환 시 최초 스냅샷을 덮어쓰지 않는다. 과거 제출을 처음 보관할 때는 당시의 미기록 FINAL을 복원했다고 주장하지 않고, 명시적 보호 시점의 판별 버전과 캡처 시각을 기록한다.
+쓰기 순서: ACTIVE 회원 `findByMemberIdForUpdate` → 본인 SUBMITTED 세션 잠금 → 보관 상태 처리. 보관 행이 없는 경우에도 같은 회원 잠금으로 슬롯 배정·현재 변경을 직렬화한다. 현재 변경 시 대상 FINAL 검사를 **기존 현재 해제보다 먼저** 수행한다. 기존 marker 해제 후 flush하고 새 marker를 설정하며 같은 트랜잭션으로 묶는다. DB UNIQUE/CHECK와 `@Version`도 유지한다.
 
-Raw 상품 매칭은 원본 응답을 계속 사용한다. 보관 대상의 질문 정의·관측 규칙·이미지 참조도 재구성 의존성이므로 파괴적으로 변경하거나 삭제하지 않는다. 향후 규칙/질문 버전 교체 시 과거 Raw 재구성 보장 방식은 별도 검토가 필요하다. 현재 스냅샷만으로 임의의 미래 관측 엔진까지 재현된다고 보장하지 않는다.
+최초 보호 요청에서 서버가 `SimpleInitialCandidateService.Response`를 캡처한다. 클라이언트 RESULT JSON을 받지 않는다. sessionId/definitionId/submission revision/ruleVersion을 검사하며 보관 재조회는 스냅샷을 우선한다. 최초 스냅샷을 재저장·현재 전환으로 덮어쓰지 않는다. 과거 제출의 최초 캡처는 캡처 시점 규칙의 결과이지 미기록 과거 판별을 복원한 것이 아니다.
 
-## 4. RESULT-12B 트랜잭션 연결 위치
+현재 구현은 마지막 보호를 해제해도 무보호 보관 행과 스냅샷을 남긴다. 저장 수에는 포함하지 않는다. 실제 정리가 미활성화되어 있으므로 만료 판별 후에도 이력/리포트가 조회될 수 있고 명시적으로 다시 보호할 수 있다. 이것을 5일 뒤 실제 소멸이 구현된 것으로 해석하면 안 된다.
 
-기존 `FormMemberRepository.findByMemberIdForUpdate()`를 추가했다. FORM 관리 서비스의 모든 쓰기는 인증된 회원 ID로 회원 행을 먼저 잠그고, 기존 `TestSessionRepository.findByIdAndMemberIdForUpdate()`로 대상 소유권·제출 상태를 확인한다. 보관 행이 아직 없는 경우에도 회원 잠금으로 동일 회원의 슬롯 배정과 현재 변경을 직렬화한다. 외부 쇼핑몰에서는 해당 인증 경계의 회원별 잠금으로 대체한다.
+## 4. 12C 만료 판별 및 경합 경계
 
-후속 관리 서비스 계약(이번에는 서비스/컨트롤러를 만들지 않음):
+`MemberResultExpiryService`는 내부 Java 서비스이며 새 HTTP API나 스케줄러는 없다.
 
-1. `save(memberId, sessionId)`: 회원 잠금 → 본인 제출 세션 조회 → 기존 보관 행 조회/최초 서버 스냅샷 캡처 → 이미 저장이면 멱등 반환 → 빈 슬롯 선택 → 없으면 저장 한도 오류. 기존 저장 결과 자동 삭제 금지.
-2. `removeSaved(memberId, sessionId)`: 동일 잠금/소유권 검사 → `removeSaved()`만 수행. 현재 상태와 원본 응답을 삭제하지 않음.
-3. `setCurrent(memberId, sessionId)`: 동일 잠금 → 대상 확인/캡처 → 기존 현재 행 `clearCurrent()` 후 **flush** → 대상 `setCurrent()` → 커밋. 중간 실패는 전체 롤백. 기존 UNIQUE가 있으므로 flush 순서가 중요함.
-4. `clearCurrent(memberId)`: 동일 회원 잠금 → 현재 행의 설정만 해제. 저장 슬롯 보존.
-5. 조회: `MemberResultRetentionRepository`의 회원 조건 메서드로 저장 목록/현재/특정 결과 조회. 기존 이력 API와 RESULT 엔진은 그대로 재사용. 새 응답 계약은 12B에서 확정.
+- `review(member, sessionId)`: 회원 잠금 → 본인 세션 잠금 → 보관 행 잠금 조회 → UTC 기준 판별.
+- `findExpired(member, limit)`: 같은 회원 잠금 → `findTemporaryExpiryReviewIds`로 제출/적용 시각/만료/보호 제외 조회 → 각 세션·보관 행을 잠금 조회하여 다시 판별 → EXPIRED만 반환. limit 1~100은 검토 조회 크기이며 정책상 보관 한도가 아니다.
+- 조회된 ID 목록은 **삭제 허가가 아니다**. 트랜잭션 밖에서 재사용하여 삭제하면 안 된다.
+- 회원 관리 쓰기와 같은 회원 잠금을 사용한다. 후보 목록과 재검사 사이에 보호 상태가 달라진 것으로 보이는 경우도 재검사에서 제외한다. 실제 MySQL 동시 트랜잭션 경쟁은 별도 검증이 필요하다.
 
-동시성: DB UNIQUE/CHECK가 최종 한도를 지키고 회원 잠금은 정상 요청의 충돌을 줄인다. `@Version`은 동일 행의 오래된 변경을 거부한다. 실제 병렬 트랜잭션 테스트, API 오류 변환 및 계정 상태 검사는 12B/12F에서 필요하다. 현재 모델만으로 전체 동시성 서비스가 검증됐다는 뜻은 아니다.
+| 상태 | 조건 |
+|---|---|
+| NOT_SUBMITTED | SUBMITTED 아님 또는 submittedAt 없음; IN_PROGRESS 제외 |
+| PROTECTED | saved_slot 또는 current_marker 존재. 과거 미확정 현재도 보호 |
+| LEGACY_EXEMPT | 무보호 완료지만 expires_at NULL: 소급 만료 금지 |
+| TEMPORARY | 적용 대상이며 UTC 현재 시각이 만료 시각 이전 |
+| EXPIRED | 적용 대상·무보호·만료 시각 도달/경과 |
 
-## 5. 만료·기존 기록·향후 삭제
+5일은 UTC 제출 시각부터 120시간이며 경계 시각부터 EXPIRED다. 판별은 적용 값이 비정상적으로 더 이르더라도 submittedAt+5일보다 짧은 보존 기간을 허용하지 않는다.
 
-- 회원 임시 결과 기준은 기존 `submittedAt + 5일`이며 `saved_slot != null OR current_marker != null`이면 보호한다. `lease_until`은 진행 세션 임대이며 결과 만료 기준이 아니다.
-- 현재 지정 해제나 저장 해제가 제출 시각을 갱신하지 않는다. 이미 5일을 넘긴 마지막 보호 해제 직후의 유예/고지 정책은 12D에서 확정한다.
-- 기존 9개 등 모든 과거 제출은 그대로 둔다. V27은 저장 행을 자동 생성하지 않고, 기존 기록을 삭제하지 않는다. 정리 기능 도입 시 과거 기록에 대한 적용 시작일·유예 정책 없이 일괄 만료시키지 않는다.
-- 비회원 12시간은 계획이다. 현재 인증 개방, 익명 소유자 ID 생성, 쿠키/토큰 및 회원 전환은 없다. 기존 세션 소유권을 빈 회원 ID로 우회하지 않는다. 12E에서 별도 소유권과 완료 시각 기준을 설계한다.
-- 원문 기획 08의 Deep 재사용 약 90일과 미저장 RESULT 5일은 다르다. 현재 답변을 그대로 삭제하면 후자의 재사용 자료도 사라질 수 있으므로 최소 재사용 데이터 범위를 정하기 전 일괄 삭제를 활성화하지 않는다. Deep 구현은 이번 범위 밖이다.
+이미 5일을 넘긴 결과의 마지막 보호 해제는 EXPIRED 판별을 가능하게 하지만, 해제 요청에서 삭제·원본 변경·기간 재시작은 하지 않는다. 추가 유예 기간은 아직 승인되지 않아 임의로 도입하지 않았다.
 
-12D 정리 설계 순서: 회원 단위 잠금 및 보호 재확인 → 과거 기록 유예/별도 보존 요건 확인 → 원본 참조와 관측·판별 의존성 조사 → 무보호 관리 행/파생 자료 정리 → 허용된 원본 세션·답변 정리. 현재 V4 답변 FK는 세션 삭제 시 CASCADE이므로 세션을 먼저 삭제해서는 안 된다. 보호 행의 FK는 세션 삭제를 막지만 답변 직접 삭제까지 막지는 않으므로 정리 서비스의 보호 검사가 필요하다. 화면 숨김을 실제 소멸로 보고하지 않는다.
+## 5. 실제 삭제가 비활성화된 이유와 후속 안전 조건
 
-정확한 배치 시각, 실패 재처리, 보존 의무, 계정 삭제, 과거 자료 유예, Deep 최소 재사용 자료 및 감사 기록은 아직 확정하지 않았다. **이번 작업은 정리 쿼리나 스케줄러를 실행하지 않는다.**
+**삭제 코드/삭제 스케줄러 없음. 화면 숨김 없음. 기존 데이터 정리 실행 없음.**
 
-## 6. 검증과 남은 범위
+기획 기록 08의 Deep 자료 재사용 약 90일과 회원 임시 RESULT 5일은 별개다. 현재 답변을 지우면 Raw·상품 매칭·향후 Deep 재사용 근거도 함께 사라진다. Deep에서 반드시 남길 최소 자료, 보존 기간/동의, 마지막 보호 해제 후 고지·유예가 미확정이므로 원본 삭제를 활성화할 수 없다.
 
-- 단위 테스트: 소유권/제출 조건, 캡처 시 기본 미보호, 슬롯 범위, 반복 행동, 저장/현재 독립 해제, 스냅샷 유지, V27 비파괴 작성 구조.
-- MySQL JPA 테스트: 별도 `RUN_RESULT_LIFECYCLE_MYSQL_TESTS=true`일 때만 실행. 대상 URL은 `tastedna_test`로 고정, 자동 Flyway는 꺼져 있으며 **V27을 별도로 적용한 DB**에서 ddl validate한다. 테스트 행은 트랜잭션 롤백한다. 기존 실제 제출을 수정하지 않는다.
-- JPA 테스트 범위: 제출만으로 보관 행이 생기지 않음, 회원 조회 분리, 6번째 제출 허용/중복 슬롯 거부, 범위 밖 슬롯·중복 현재·다른 소유자 FK·중복 세션 거부. 병렬 경쟁 검증은 아직 없다.
-- 12B: 관리 서비스/API, 서버 스냅샷 생성·검증·조회 연결 및 트랜잭션 동작.
-- 12C: 리포트/마이페이지 저장·현재 설정 버튼과 이력/저장 목록 분리.
-- 12D: 과거 데이터 보호 정책을 확정한 뒤 5일 정리와 실제 삭제 범위.
-- 12E: 비회원 12시간과 회원 전환.
-- 12F: 실제 MySQL 제약/경쟁, 브라우저 전체 관리 흐름.
+후속 작업은 위 정책을 먼저 확정한 뒤, 신규 적용 표식 확인 → 회원 잠금과 보호 재확인 → Deep/기타 보존 의존성 확인 → 무보호 보관 스냅샷/파생 자료 → 허용된 원본 답변·세션 순서를 검토해야 한다. 어떤 삭제 단계도 현재 구현되거나 실행되지 않았다. 과거 NULL 기록은 별도 승인 없이 정리 대상에 포함하지 않는다. 배치 주기·실패 재처리·감사 기록·계정 탈퇴 삭제는 미정이다.
 
-12A 실행 결과: Java 21 컴파일 성공. `MemberResultRetentionTest` 5개, `TestSessionTest` 5개, `TestSessionServiceTest` 38개, `SimpleInitialCandidateServiceTest` 69개, 총 117개 통과. `MemberResultRetentionJpaTest` 6개는 환경변수/DB 자격 증명이 없어 건너뜀. 실제 MySQL 적용·제약 검증 및 브라우저는 미실시다. 기존 `MemberAuthMysqlIntegrationTest`의 V25 고정 assertion은 저장소의 최신 마이그레이션 버전·개수를 대조하도록 보완했으며 실제 실행하지 않았다.
+## 6. 비회원 현행 계약과 폐기된 계획
+
+**기획 기록 08 및 12A의 ‘12시간 결과 보존/회원 전환’은 12B 사용자 결정으로 폐기된 계획**이다. 현행 정책이 아니며 후속 개발 대상으로도 예약하지 않는다.
+
+`GuestSimpleService` / `GuestSimpleController`:
+
+- GET `/api/v1/guest/simple/questions?apparelScope=mens|womens`: 서버가 정한 남녀 Simple 10문항.
+- POST `/api/v1/guest/simple/submit`: 실제 10문항 선택 형식 검증 → 메모리 SessionAnswer → 기존 Raw/FINAL/상품 매칭 공용 계산 → 결과 묶음 반환 (`Cache-Control: no-store`).
+- POST는 기존 CSRF 검증을 유지한다. 비회원 공개는 이 경로에 한정되며 회원 이력·관리 API는 여전히 인증 필요.
+- 세션·답변·보관 Repository 쓰기 없음. 요청 종료 후 서버 결과 보관 없음. 공용 회원 ID 없음.
+- FORM은 현재 페이지의 메모리 답변/결과만 사용한다. 새로고침/브라우저 종료 후 복원, 과거 결과 목록, 계정 저장·이전, 현재 설정을 제공하지 않는다.
+- 일반 CSRF/보안 HTTP 세션과 TasteDNA 완료 결과 보존은 별개다. 비회원 결과용 테이블·캐시·만료 스케줄러는 없다.
+
+## 7. 검증 범위와 남은 작업
+
+자동화 검증은 DB 대역을 쓰는 서비스/MVC 테스트와 Node DOM 대역 테스트를 실제 MySQL/브라우저 검증과 구분한다.
+
+- 회원 서비스: 5슬롯·중복·6번째 거부·슬롯 재사용·현재 교체 순서·독립 해제·소유권·서버 스냅샷 보존. FINAL 미확정 저장 허용/신규 현재 거부/거부 시 무변경/과거 현재 보존.
+- 기존 회원 실제 컨트롤러 제출 경로: 신규 만료 시각 기록, 보관 Repository 자동 호출 없음, 인증·소유권 경계.
+- 비회원: 실제 마이그레이션의 남녀 10문항·Raw 규칙 fixture와 기존 계산 서비스로 제출/FINAL/상품 근거 확인, 잘못된 옵션·null·불완전 응답 거부, 회원 세션·답변 Repository 무호출. 보관 Repository는 비회원 계산 경로의 의존성이 아니다.
+- 만료: 5일 경계, 저장만/현재만 보호, 마지막 보호 해제, 과거 NULL·진행 중 제외, 잠금 순서와 재검사. V28이 기존 행을 backfill/삭제하지 않는 구조 검증.
+- FORM: 기존 결과 재조회, 저장과 이력 구분, 미확정 설정 버튼 미노출·저장 허용, 과거 현재 해제, 비회원 결과 관리 기능 미노출.
+- 선택적 `MemberResultRetentionJpaTest`: `RUN_RESULT_LIFECYCLE_MYSQL_TESTS=true`에서만 실행. URL은 `tastedna_test` 고정, 자동 Flyway 비활성, **V28까지 별도 적용** 후 ddl validate. 자체 생성 행만 테스트하고 트랜잭션 롤백. UNIQUE/FK/슬롯·현재 제약, 만료 조회와 기존 이력 보존 검증. 실제 병렬 경합/롤백 검증까지 완료한 것으로 주장하지 않는다.
+
+이번 환경에 DB_USERNAME/DB_PASSWORD가 없어 MySQL 적용·실제 제약·동시성 검증은 미실시다. 브라우저는 사용자 수동 검증 대상이다. 실제 실행 건수는 작업 완료 보고를 따른다.
+
+남은 범위: MySQL V28 비파괴 적용 및 조회/경합 검증, Deep 최소 보존 자료와 마지막 보호 해제 정책 결정, 그 이후에만 물리 정리 및 운영 배치 설계. 기존 12D~12F 중 비회원 보존·회원 이전은 취소됐으며 다시 구현하지 않는다.
