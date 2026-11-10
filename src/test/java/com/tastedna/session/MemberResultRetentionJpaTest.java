@@ -64,7 +64,8 @@ class MemberResultRetentionJpaTest {
         var ids = sessions.findTemporaryExpiryReviewIds(member, LocalDateTime.of(2026, 12, 1, 0, 0),
                 org.springframework.data.domain.PageRequest.of(0, 20));
         assertEquals(java.util.List.of(expired.getSessionId()), ids);
-        assertEquals(5, sessions.findSimpleHistory(member).size());
+        assertEquals(4, sessions.findSimpleHistory(
+                member, LocalDateTime.of(2026, 12, 1, 0, 0)).size());
         assertNotNull(sessions.findById(legacy.getSessionId()).orElseThrow());
     }
 
@@ -80,7 +81,9 @@ class MemberResultRetentionJpaTest {
         assertTrue(results.findBySessionIdAndMallMemberId(captured.getSessionId(), "another-member").isEmpty());
         assertEquals(captured.getSessionId(), results.findByMallMemberIdAndCurrentMarker(member, 1).orElseThrow().getSessionId());
         assertTrue(results.findByMallMemberIdAndSavedSlotIsNotNullOrderBySavedAtDesc(member).isEmpty());
-        assertTrue(sessions.findSimpleHistory(member).stream().anyMatch(s -> s.getSessionId().equals(captured.getSessionId())));
+        assertTrue(sessions.findSimpleHistory(
+                        member, LocalDateTime.of(2026, 11, 11, 0, 0))
+                .stream().anyMatch(s -> s.getSessionId().equals(captured.getSessionId())));
     }
 
     @Test void sixthSaveCannotReuseOccupiedSlotButSixthSubmissionIsAllowed() {
@@ -91,7 +94,8 @@ class MemberResultRetentionJpaTest {
             results.saveAndFlush(result);
         }
         var sixth = capture(member);
-        assertEquals(6, sessions.findSimpleHistory(member).size());
+        assertEquals(6, sessions.findSimpleHistory(
+                member, LocalDateTime.of(2026, 11, 11, 0, 0)).size());
         sixth.saveToSlot(1, LocalDateTime.now());
         assertThrows(DataIntegrityViolationException.class, () -> results.saveAndFlush(sixth));
     }

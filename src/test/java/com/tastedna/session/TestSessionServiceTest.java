@@ -45,16 +45,19 @@ class TestSessionServiceTest {
         var submitted = new TestSession(UUID.randomUUID().toString(), "owner", UUID.randomUUID().toString(),
                 "WOMENS", "[]", now.minusDays(1), now.plusMinutes(2));
         submitted.submit(now.plusHours(1));
-        when(sessionRepository.findSimpleHistory("owner")).thenReturn(List.of(submitted, pending));
+        when(sessionRepository.findSimpleHistory(eq("owner"), any(LocalDateTime.class)))
+                .thenReturn(List.of(submitted, pending));
         var result = service.history("owner");
         assertEquals(List.of("SUBMITTED", "IN_PROGRESS"), result.stream().map(SessionHistoryResponse::status).toList());
         assertEquals(ApparelScope.womens, result.getFirst().apparelScope());
         assertEquals(now.plusHours(1).toInstant(ZoneOffset.UTC), result.getFirst().submittedAt());
         assertNull(result.getLast().submittedAt());
         assertEquals(now.toInstant(ZoneOffset.UTC), result.getLast().startedAt());
-        when(sessionRepository.findSimpleHistory("other")).thenReturn(List.of());
+        when(sessionRepository.findSimpleHistory(eq("other"), any(LocalDateTime.class)))
+                .thenReturn(List.of());
         assertTrue(service.history("other").isEmpty());
-        verify(sessionRepository).findSimpleHistory("other");
+        verify(sessionRepository).findSimpleHistory(
+                eq("other"), any(LocalDateTime.class));
         verifyNoInteractions(answerRepository, definitionRepository);
     }
 
@@ -62,9 +65,12 @@ class TestSessionServiceTest {
     void historyControllerUsesPrincipalWithoutClientMemberId() {
         var principal = mock(Authentication.class);
         when(principal.getName()).thenReturn("signed-in-member");
-        when(sessionRepository.findSimpleHistory("signed-in-member")).thenReturn(List.of());
+        when(sessionRepository.findSimpleHistory(
+                eq("signed-in-member"), any(LocalDateTime.class)))
+                .thenReturn(List.of());
         assertTrue(new TestSessionController(service).history(principal).isEmpty());
-        verify(sessionRepository).findSimpleHistory("signed-in-member");
+        verify(sessionRepository).findSimpleHistory(
+                eq("signed-in-member"), any(LocalDateTime.class));
     }
 
     @Mock
