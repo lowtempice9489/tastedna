@@ -6,11 +6,11 @@ export async function storefront(main, startTaste) {
  <section class="commerce-promotions" aria-label="FORM 스타일 에디트">
   <div class="commerce-hero">
    <div class="commerce-copy"><p class="eyebrow">FORM STYLE EDIT / 01</p><h1>가벼워지는 계절,<br>새로운 스타일.</h1><p>일상에 편안함과 세련됨을 더하는<br>FORM의 스타일 에디트를 만나보세요.</p><a class="primary" href="#collection">컬렉션 둘러보기 <span aria-hidden="true">↗</span></a><small>EVERYDAY, IN YOUR OWN WAY.</small></div>
-   <img class="commerce-model" src="/assets/gender/male/Q10/J.png" alt="네이비 재킷과 화이트 셔츠를 조합한 단정한 봄 착장">
+   <img class="commerce-model" src="/assets/gender/TasteDNA_FORM_Main/form-hero-main.png" alt="재킷을 입은 남성과 니트를 입은 여성의 봄 스타일">
   </div>
   <div class="commerce-side">
-   <a class="edit-card" href="#collection" data-edit-category="재킷"><div><p class="eyebrow">THE OUTER EDIT</p><h2>일상을 바꾸는<br>아우터 한 벌</h2><span>재킷 살펴보기 ↗</span></div><img src="/assets/gender/male/Q06/TasteDNA_Q06_E.png" alt="데님 재킷 착장"></a>
-   <a class="edit-card" href="#collection" data-edit-category="텍스처"><div><p class="eyebrow">TOUCH & TEXTURE</p><h2>눈길이 머무는<br>소재의 표정</h2><span>텍스처 살펴보기 ↗</span></div><img src="/assets/gender/male/Q06/TasteDNA_Q06_G.png" alt="아이보리 텍스처 재킷 착장"></a>
+   <a class="edit-card" href="#collection" data-edit-category="재킷"><div><p class="eyebrow">THE OUTER EDIT</p><h2>일상을 바꾸는<br>아우터 한 벌</h2><span>재킷 살펴보기 ↗</span></div><img src="/assets/gender/TasteDNA_FORM_Main/form-hero-outer.png" alt="남성 데님 아우터 착장"></a>
+   <a class="edit-card" href="#collection" data-edit-category="텍스처"><div><p class="eyebrow">TOUCH & TEXTURE</p><h2>눈길이 머무는<br>소재의 표정</h2><span>텍스처 살펴보기 ↗</span></div><img src="/assets/gender/TasteDNA_FORM_Main/form-hero-texture.png" alt="여성 아이보리 니트 착장"></a>
   </div>
  </section>
  <div class="commerce-note"><span>FORM / EXHIBITION COLLECTION</span><p>좋아하는 옷을 고르는 일에서, 나를 알아가는 일까지.</p><span>전시용 데모 스토어</span></div>

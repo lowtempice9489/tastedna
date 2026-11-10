@@ -51,3 +51,23 @@ main:has(>.form-mypage){max-width:1440px;padding:24px 3% 56px}.form-mypage{color
 @media(max-width:1100px){.mypage-body{grid-template-columns:170px minmax(0,1fr);gap:16px}.mypage-summary-grid{grid-template-columns:1fr}.mypage-history-grid{grid-template-columns:1fr 1fr}.mypage-saved-grid{grid-template-columns:1fr}.mypage-member{grid-template-columns:1fr 75px 75px;padding:18px;gap:14px}.mypage-member>div+div{padding-left:14px}.mypage-categories{gap:8px}.mypage-categories strong{font-size:13px}}
 @media(max-width:760px){main:has(>.form-mypage){padding:20px 5% 40px}.mypage-body{grid-template-columns:1fr}.mypage-body aside{padding:16px}.mypage-body aside nav{display:flex;flex-wrap:wrap;gap:5px;margin:12px 0 0}.mypage-body aside a{font-size:12px;padding:9px}.mypage-profile{padding-bottom:12px}.mypage-body aside button{width:auto}.mypage-heading-note{display:none}.mypage-heading h1{font-size:30px}.mypage-heading{margin-bottom:16px}.mypage-intro{padding:24px;grid-template-columns:1fr}.mypage-banner-art{display:none}.mypage-intro h2{font-size:40px}.mypage-categories{grid-template-columns:repeat(2,minmax(0,1fr))}.mypage-history-grid{grid-template-columns:1fr}.mypage-saved-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:450px){.mypage-member{grid-template-columns:1fr 1fr}.mypage-member>div:first-child{grid-column:1/-1}.mypage-member>div+div{padding-left:0;border:0}.mypage-latest{grid-template-columns:1fr}.mypage-latest-actions button{width:100%}.mypage-saved-grid{grid-template-columns:1fr}.mypage-record{align-items:flex-start;flex-wrap:wrap}.mypage-latest,.mypage-at-glance,.mypage-records{padding:18px}.mypage-banner-tags span{font-size:10px}}
+
+/* 랜딩 전용 원본의 두 모델과 세로 착장을 자르지 않고 텍스트 영역과 분리한다. */
+.form-home .commerce-model{width:100%;height:100%;object-fit:contain;object-position:right center;mix-blend-mode:normal;opacity:1}
+.form-home .commerce-copy{width:45%;padding:32px 0 32px 5%}
+.form-home .commerce-copy h1{font-size:clamp(26px,2.6vw,40px)}
+.form-home .commerce-hero:after{display:none}
+.form-home .edit-card{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:stretch}
+.form-home .edit-card>div{width:auto;padding:22px 12%;background:none;align-self:center;min-width:0}
+.form-home .edit-card img{position:static;width:100%;height:100%;max-height:220px;object-fit:contain;object-position:center;mix-blend-mode:normal;opacity:1;align-self:center}
+.form-home .edit-card h2{font-size:clamp(16px,1.5vw,22px)}
+@media(max-width:760px){
+ .form-home .commerce-hero{flex-direction:column;min-height:0;align-items:stretch}
+ .form-home .commerce-copy{width:100%;padding:24px 7%}
+ .form-home .commerce-copy h1{font-size:30px;margin:12px 0}
+ .form-home .commerce-copy small{margin-top:18px}
+ .form-home .commerce-model{position:static;display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain}
+ .form-home .edit-card>div{padding:18px 10%}
+ .form-home .edit-card img{height:180px;max-height:none}
+}
+@media(max-width:500px){.form-home .commerce-side{grid-template-columns:minmax(0,1fr)}.form-home .edit-card{min-height:180px}}
