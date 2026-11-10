@@ -48,7 +48,9 @@ public class TestSessionService {
 
     @Transactional(readOnly = true)
     public List<SessionHistoryResponse> history(String memberId) {
-        return sessionRepository.findSimpleHistory(memberId).stream().map(s ->
+        return sessionRepository.findSimpleHistory(
+                memberId,
+                LocalDateTime.now(ZoneOffset.UTC)).stream().map(s ->
                 new SessionHistoryResponse(UUID.fromString(s.getSessionId()), Mode.SIMPLE,
                         ApparelScope.valueOf(s.getApparelScope().toLowerCase(Locale.ROOT)), s.getStatus(),
                         s.getStartedAt().toInstant(ZoneOffset.UTC),

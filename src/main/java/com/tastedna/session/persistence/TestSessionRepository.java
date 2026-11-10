@@ -32,13 +32,36 @@ public interface TestSessionRepository
     );
 
     // 인증된 회원의 저장 기록만 읽고, 제출 또는 시작 시각이 최신인 순서로 제공한다.
+
     @Query("""
-            select s from TestSession s, TestDefinition d
-            where s.definitionId = d.definitionId and d.testMode = 'SIMPLE'
-              and s.mallMemberId = :memberId and s.status in ('IN_PROGRESS', 'SUBMITTED')
-            order by coalesce(s.submittedAt, s.startedAt) desc, s.sessionId desc
-            """)
-    List<TestSession> findSimpleHistory(@Param("memberId") String memberId);
+        select s from TestSession s, TestDefinition d
+        where s.definitionId = d.definitionId
+          and d.testMode = 'SIMPLE'
+          and s.mallMemberId = :memberId
+          and s.status in ('IN_PROGRESS', 'SUBMITTED')
+          and (
+              s.status = 'IN_PROGRESS'
+              or s.temporaryResultExpiresAt is null
+              or s.temporaryResultExpiresAt > :now
+              or exists (
+                  select r.sessionId
+                  from MemberResultRetention r
+                  where r.sessionId = s.sessionId
+                    and r.mallMemberId = s.mallMemberId
+                    and (
+                        r.savedSlot is not null
+                        or r.currentMarker is not null
+                    )
+              )
+          )
+        order by coalesce(s.submittedAt, s.startedAt) desc,
+                 s.sessionId desc
+        """)
+    List<TestSession> findSimpleHistory(
+            @Param("memberId") String memberId,
+            @Param("now") LocalDateTime now
+    );
+
 
     // 만료 검토용 후보만 조회한다. 이 목록을 삭제 허가로 사용하지 않고 잠금 후 보호 상태를 재검사한다.
     @Query("""
