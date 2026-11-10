@@ -111,6 +111,13 @@ public class StyleCoreCandidateService {
     public List<ResultCandidateEvidence> extractCompatibleDirectEvidence(
             String memberId, String sessionId, String definitionId,
             JsonNode approvedQuestion, JsonNode presentedQuestion) {
+        return extractCompatibleDirectEvidence(definitionId, approvedQuestion, presentedQuestion,
+                observationService.collectRaw(memberId, sessionId));
+    }
+
+    public List<ResultCandidateEvidence> extractCompatibleDirectEvidence(String definitionId,
+            JsonNode approvedQuestion, JsonNode presentedQuestion,
+            Map<String, List<RawObservationAggregator.RawObservation>> raw) {
         var mapping = loadDirectMapping().deepCopy();
         ((ObjectNode) mapping).put("sourceDefinitionId", definitionId);
         var labels = new HashMap<String, String>();
@@ -123,7 +130,7 @@ public class StyleCoreCandidateService {
                 compatible.add(id);
         }
         // ID만 같은 선택지를 오인하지 않도록 승인된 표시명과 직접 관측값을 함께 확인한다.
-        var direct = observationService.collectRaw(memberId, sessionId)
+        var direct = raw
                 .getOrDefault("DIRECT_FASHION_LOOK_PREFERENCE", List.of()).stream()
                 .filter(o -> definitionId.equals(o.definitionId()) && "Q02".equals(o.questionId()))
                 .filter(o -> compatible.contains(o.optionId()) && labels.get(o.optionId()).equals(o.observedValue()))

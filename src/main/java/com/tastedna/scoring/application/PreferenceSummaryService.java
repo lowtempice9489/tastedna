@@ -1,6 +1,7 @@
 package com.tastedna.scoring.application;
 
 import com.tastedna.session.domain.TestSession;
+import com.tastedna.session.domain.SessionAnswer;
 import java.util.stream.Collectors;
 
 import com.tastedna.session.persistence.*;
@@ -64,6 +65,10 @@ public class PreferenceSummaryService {
         if (!"SIMPLE".equals(response.mode().name()))
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "SIMPLE_SESSION_REQUIRED");
         var stored = answers.findByIdSessionIdOrderByIdQuestionIdAsc(id.toString());
+        return summarize(response, stored);
+    }
+
+    public Summary summarize(SessionResponse response, List<SessionAnswer> stored) {
         Set<String> expected = new HashSet<>();
         for (int i = 1; i <= 10; i++) expected.add("Q%02d".formatted(i));
         if (!stored.stream().map(a -> a.getId().getQuestionId()).collect(Collectors.toSet()).equals(expected))

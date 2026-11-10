@@ -4,7 +4,7 @@ import {activeGroups, selectionMap, choose, valid, isRanked} from './assessment-
 
 const main=document.querySelector('main'), notice=document.querySelector('#notice'), dialog=document.querySelector('#zoom');
 const client=createClient();
-let selectedScope='mens';
+let selectedScope='mens', guest=false, guestResult=null;
 let authMode, member=null, returnTo=null, session=null, questions=[], answers={}, step=0, busy=false, toastTimer;
 const titles=['COLOR','STYLE','SILHOUETTE','PATTERN','FIRST IMPRESSION','YOUR WARDROBE','NOT FOR ME','THE DETAILS','STYLING','FINAL LOOK'];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -17,6 +17,8 @@ async function api(path, body){
  return client.request(path,body);
 }
 const errors={
+ RESULT_STORAGE_FULL:'저장한 결과가 5개입니다. 마이페이지에서 보관하지 않을 결과를 저장 해제한 뒤 다시 저장해주세요.',
+ INVALID_ANSWER:'응답을 확인해주세요. 선택 개수와 비교 순위를 지켜야 합니다.',
  IMAGE_DEFINITION_NOT_READY:'선택한 의류 테스트 정의가 아직 준비되지 않았어요. 다른 의류 범위를 선택하거나 나중에 다시 시도해주세요.',
  INVALID_CREDENTIALS:'이메일 또는 비밀번호를 확인해주세요.',
  EMAIL_ALREADY_REGISTERED:'이미 가입된 이메일입니다. FORM 로그인으로 이동해주세요.',
@@ -112,7 +114,7 @@ function selectTestMode(scope='mens'){
  <article class="mode-card mode-deep" aria-disabled="true" aria-labelledby="deep-title"><span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle cx="27" cy="27" r="18"/><path d="m40 40 15 15M20 19q8-6 14 2"/></svg></span><h2 class="mode-name" id="deep-title">Deep</h2><span class="mode-tag">준비 중</span><p class="mode-description">더 깊이 취향을 탐색할 수 있도록<br>질문과 경험을 준비하고 있어요.</p><span class="mode-unavailable">아직 시작할 수 없어요</span></article>
  </div><p class="wardrobe-note">진행 중인 Simple 기록이 있다면 이어서 답할 수 있어요.</p><button type="button" class="secondary" id="mode-back">← 의류 선택으로</button>
  </section>`;
- document.querySelector('#choose-simple').onclick=login;
+ document.querySelector('#choose-simple').onclick=()=>authMode==='member'&&!member?action(startGuest):login();
  document.querySelector('#mode-back').onclick=selectApparel;
  focusMain();
 }
@@ -137,6 +139,7 @@ function login(){
  };focusMain();
 }
 function clearMember(){
+ guest=false;guestResult=null;
  member=null;session=null;questions=[];answers={};step=0;client.clear();updateMemberNav();
  if(dialog.open)dialog.close();
 }
@@ -177,6 +180,9 @@ async function myPage(){
  history.replaceState(null,'','#mypage');returnTo='mypage';
  loading('나의 TasteDNA 기록을 확인하고 있어요.');
  const records=await api('/sessions/history')||[];
+ const managed=await api('/member/results');
+ const savedEntries=managed.saved||[], currentEntry=managed.current;
+ const savedRecords=records.filter(r=>savedEntries.some(e=>e.sessionId===r.sessionId));
  const latest=records.find(r=>r.status==='SUBMITTED');
  let summary=null;
  if(latest){
@@ -191,8 +197,10 @@ async function myPage(){
       (initial.definitionId===summary.session.definitionId&&initial.revision===summary.session.revision)))finals.set(record.sessionId,initial);
   }catch(e){if(e.status===401)throw e;}
  }
+ for(const entry of [...savedEntries,...(currentEntry?[currentEntry]:[])])if(entry.result)finals.set(entry.sessionId,entry.result);
  const latestInitial=latest?finals.get(latest.sessionId):null;
  const recordResult=r=>{const candidate=finalCandidate(finals.get(r.sessionId));return candidate?'<p>종합 RESULT · '+esc(candidate.candidateId+' · '+candidate.candidateName)+'</p>':'';};
+ const currentCard='<section class="report-panel"><h2>현재 TasteDNA</h2>'+(currentEntry?finalMarkup(currentEntry.result)+directResultMarkup(currentEntry.result)+'<button class="secondary" id="current-open">결과 보기</button> <button class="secondary" id="current-clear">현재 설정 해제</button>':'<p>미설정 · 결과 리포트에서 직접 설정할 수 있어요.</p>')+'</section>';
  const styles=summary?.evidence?.find(e=>e.questionId==='Q02')?.selections||[];
  const latestDirect=latestInitial?.simpleRepresentative;
  const dateLabel=r=>new Date(r.submittedAt||r.startedAt).toLocaleString('ko-KR');
@@ -204,8 +212,17 @@ async function myPage(){
   const selections=summary?.evidence?.find(e=>e.questionId===id)?.selections||[];
   return selections.length?'<div><span>'+label+'</span><p>'+esc(selections.map(s=>s.label).join(' · '))+'</p></div>':'';
  }).join('');
- main.innerHTML='<section class="form-mypage"><header class="mypage-heading"><div><p class="eyebrow">FORM / MY PAGE</p><h1>마이페이지</h1></div><p class="mypage-heading-note">내가 고른 취향을 다시 만나는 곳,<br><em>TasteDNA</em>와 함께</p></header><div class="mypage-body"><aside><div class="mypage-profile"><span aria-hidden="true">F</span><div><strong>FORM 회원</strong><p>'+esc(member.email)+'</p></div></div><nav aria-label="마이페이지 메뉴"><a href="#mypage-overview">마이페이지 홈</a><a class="selected" href="#mypage-taste">내 TasteDNA</a><a href="#mypage-saved">저장된 테스트 기록</a><a href="#mypage-recent">최근 테스트 기록</a></nav><button class="secondary" id="mypage-shop">FORM 컬렉션으로 →</button></aside><div class="mypage-content" id="mypage-overview"><section class="mypage-member"><div><strong>나의 FORM, 나의 TasteDNA</strong><p>직접 고른 취향을 모아 나다운 선택을 발견하세요.</p></div><div><span>저장된 테스트</span><b>'+records.length+'</b></div><div><span>제출 완료</span><b>'+completed.length+'</b></div></section><div class="mypage-tab">내 TasteDNA</div><section class="mypage-intro" id="mypage-taste"><div><p class="eyebrow">FORM의 취향 기록 서비스 · TasteDNA</p><h2>내 TasteDNA</h2><p>마음이 가는 선택에서 발견한 나의 취향.<br>직접 선택한 선호를 돌아보고, 연결된 상품을 살펴보세요.</p><div class="mypage-banner-tags"><span>취향 테스트</span><span>직접 선호 리포트</span><span>스타일 기반 상품 연결</span></div></div><div class="mypage-banner-art" aria-hidden="true"><i></i><i></i><span>Style</span><em>Taste</em></div></section><h2 class="mypage-section-title">카테고리별 TasteDNA</h2><div class="mypage-categories"><div><strong>의류</strong><small>현재 이용 가능</small><p>남성복·여성복 Simple<br>직접 선택한 패션 취향</p></div><div><strong>리빙 · 준비 중</strong><p>공간의 취향</p></div><div><strong>뷰티 · 준비 중</strong><p>나를 위한 취향</p></div><div><strong>라이프 · 준비 중</strong><p>일상의 취향</p></div></div><div class="mypage-summary-grid">'+latestCard+'<section class="mypage-at-glance"><h2>내 취향 한눈에</h2><p class="muted">최근 완료 기록에서 직접 확인한 선호</p>'+(preferenceRows||'<p class="mypage-empty">아직 표시할 직접 선호 정보가 없습니다.</p>')+'</section></div><div class="mypage-history-grid"><section class="mypage-records" id="mypage-saved"><h2>저장된 테스트 기록 <small>'+completed.length+'</small></h2><p class="muted">제출을 완료한 기록을 다시 확인하세요.</p><div class="mypage-saved-grid">'+completed.map(r=>'<article><span class="mypage-saved-mark" aria-hidden="true">TasteDNA</span><h3>'+esc(scopeLabel(r))+'</h3><p>'+esc(dateLabel(r))+'</p>'+recordResult(r)+'<button class="secondary" id="mypage-saved-'+records.indexOf(r)+'">결과 보기 →</button></article>').join('')+'</div>'+(!completed.length?'<p class="mypage-empty">아직 제출 완료한 기록이 없습니다.</p>':'')+'</section><section class="mypage-records" id="mypage-recent"><h2>최근 테스트 기록 <small>'+records.length+'</small></h2><p class="muted">최근 제출·시작 순서로 표시해요.</p>'+records.map(recordCard).join('')+(!records.length?'<p class="mypage-empty">현재 조회 가능한 Simple 기록이 없습니다.</p>':'')+'</section></div><button class="secondary" id="mypage-start">TasteDNA 알아보기 →</button></div></div></section>';
- completed.forEach(r=>document.querySelector('#mypage-saved-'+records.indexOf(r)).onclick=()=>action(()=>loadSession(r.sessionId)));
+ main.innerHTML='<section class="form-mypage"><header class="mypage-heading"><div><p class="eyebrow">FORM / MY PAGE</p><h1>마이페이지</h1></div><p class="mypage-heading-note">내가 고른 취향을 다시 만나는 곳,<br><em>TasteDNA</em>와 함께</p></header><div class="mypage-body"><aside><div class="mypage-profile"><span aria-hidden="true">F</span><div><strong>FORM 회원</strong><p>'+esc(member.email)+'</p></div></div><nav aria-label="마이페이지 메뉴"><a href="#mypage-overview">마이페이지 홈</a><a class="selected" href="#mypage-taste">내 TasteDNA</a><a href="#mypage-saved">저장한 결과</a><a href="#mypage-recent">최근 테스트 기록</a></nav><button class="secondary" id="mypage-shop">FORM 컬렉션으로 →</button></aside><div class="mypage-content" id="mypage-overview"><section class="mypage-member"><div><strong>나의 FORM, 나의 TasteDNA</strong><p>직접 고른 취향을 모아 나다운 선택을 발견하세요.</p></div><div><span>저장한 결과</span><b>'+savedEntries.length+' / 5</b></div><div><span>제출 완료</span><b>'+completed.length+'</b></div></section><div class="mypage-tab">내 TasteDNA</div><section class="mypage-intro" id="mypage-taste"><div><p class="eyebrow">FORM의 취향 기록 서비스 · TasteDNA</p><h2>내 TasteDNA</h2><p>마음이 가는 선택에서 발견한 나의 취향.<br>직접 선택한 선호를 돌아보고, 연결된 상품을 살펴보세요.</p><div class="mypage-banner-tags"><span>취향 테스트</span><span>직접 선호 리포트</span><span>스타일 기반 상품 연결</span></div></div><div class="mypage-banner-art" aria-hidden="true"><i></i><i></i><span>Style</span><em>Taste</em></div></section><h2 class="mypage-section-title">카테고리별 TasteDNA</h2><div class="mypage-categories"><div><strong>의류</strong><small>현재 이용 가능</small><p>남성복·여성복 Simple<br>직접 선택한 패션 취향</p></div><div><strong>리빙 · 준비 중</strong><p>공간의 취향</p></div><div><strong>뷰티 · 준비 중</strong><p>나를 위한 취향</p></div><div><strong>라이프 · 준비 중</strong><p>일상의 취향</p></div></div>'+currentCard+'<div class="mypage-summary-grid">'+latestCard+'<section class="mypage-at-glance"><h2>내 취향 한눈에</h2><p class="muted">최근 완료 기록에서 직접 확인한 선호</p>'+(preferenceRows||'<p class="mypage-empty">아직 표시할 직접 선호 정보가 없습니다.</p>')+'</section></div><div class="mypage-history-grid"><section class="mypage-records" id="mypage-saved"><h2>저장한 결과 <small>'+savedEntries.length+' / 5</small></h2><p class="muted">직접 저장한 결과만 표시합니다. 현재 설정과 저장은 독립적입니다.</p><div class="mypage-saved-grid">'+savedRecords.map(r=>'<article><span class="mypage-saved-mark" aria-hidden="true">TasteDNA</span><h3>'+esc(scopeLabel(r))+'</h3><p>'+esc(dateLabel(r))+'</p>'+recordResult(r)+'<button class="secondary" id="mypage-saved-'+records.indexOf(r)+'">결과 보기 →</button><button class="secondary" id="saved-remove-'+records.indexOf(r)+'">저장 해제</button><button class="secondary" id="saved-current-'+records.indexOf(r)+'">현재 TasteDNA로 설정</button></article>').join('')+'</div>'+(!savedEntries.length?'<p class="mypage-empty">직접 저장한 결과가 없습니다. 제출 이력은 최근 테스트 기록에서 확인하세요.</p>':'')+'</section><section class="mypage-records" id="mypage-recent"><h2>최근 테스트 기록 <small>'+records.length+'</small></h2><p class="muted">최근 제출·시작 순서로 표시해요.</p>'+records.map(recordCard).join('')+(!records.length?'<p class="mypage-empty">현재 조회 가능한 Simple 기록이 없습니다.</p>':'')+'</section></div><button class="secondary" id="mypage-start">TasteDNA 알아보기 →</button></div></div></section>';
+ savedRecords.forEach(r=>{
+  const i=records.indexOf(r);
+  document.querySelector('#mypage-saved-'+i).onclick=()=>action(()=>loadSession(r.sessionId));
+  document.querySelector('#saved-remove-'+i).onclick=()=>action(async()=>{await api('/member/results/'+r.sessionId+'/unsave',{});await myPage();});
+  document.querySelector('#saved-current-'+i).onclick=()=>action(async()=>{await api('/member/results/'+r.sessionId+'/current',{});await myPage();});
+ });
+ if(currentEntry){
+  document.querySelector('#current-open').onclick=()=>action(()=>loadSession(currentEntry.sessionId));
+  document.querySelector('#current-clear').onclick=()=>action(async()=>{await api('/member/results/current/clear',{});await myPage();});
+ }
  main.querySelectorAll('aside a').forEach(a=>a.onclick=e=>{e.preventDefault();main.querySelector(a.getAttribute('href'))?.scrollIntoView({behavior:'smooth',block:'start'});});
  records.forEach((r,i)=>document.querySelector('#mypage-record-'+i).onclick=()=>action(async()=>{
   returnTo=r.sessionId;
@@ -252,7 +269,32 @@ function formAuth(signup=false,email=''){
  main.querySelector('#auth-back').onclick=()=>{if(!busy){returnTo=null;shop();}};
  focusMain();
 }
+
+async function startGuest(){
+ const data=await api('/guest/simple/questions?apparelScope='+selectedScope);
+ guest=true;guestResult=null;answers={};questions=data.questions;step=0;
+ session={mode:'SIMPLE',apparelScope:selectedScope,status:'IN_PROGRESS',revision:0,definitionId:data.definitionId};
+ returnTo=null;history.replaceState(null,'','#taste');render();focusMain();
+ toast('비회원 테스트입니다. 답변과 결과는 저장되지 않으며 새로고침하면 사라집니다.');
+}
+function directResultMarkup(initial){
+ const direct=initial?.simpleRepresentative;
+ return direct?'<p>직접 선택한 스타일 · '+esc(direct.candidateId+' · '+direct.candidateName)+'</p>':'<p>직접 선호와 종합 결과는 결과 리포트에서 확인하세요.</p>';
+}
+async function renderResultManagement(id){
+ const box=document.querySelector('#report-management');
+ if(guest){box.innerHTML='<p class="report-status">비회원 결과 · 이 화면에서만 확인할 수 있으며 계정 저장·현재 설정·로그인 후 이전은 지원하지 않습니다. 새로고침하면 결과가 사라집니다.</p>';return;}
+ if(authMode!=='member'||!member)return;
+ try{
+  const state=await api('/member/results/'+id);
+  box.innerHTML='<section class="report-panel"><h2>나의 TasteDNA 관리</h2><p>테스트 완료와 저장, 현재 설정은 각각 별개의 선택입니다.</p><button class="secondary" id="result-save">'+(state.saved?'저장 해제':'결과 저장')+'</button> <button class="secondary" id="result-current">'+(state.current?'현재 TasteDNA · 설정 해제':'현재 TasteDNA로 설정')+'</button></section>';
+  document.querySelector('#result-save').onclick=()=>action(async()=>{await api('/member/results/'+id+(state.saved?'/unsave':'/save'),{});await renderResultManagement(id);});
+  document.querySelector('#result-current').onclick=()=>action(async()=>{await api(state.current?'/member/results/current/clear':'/member/results/'+id+'/current',{});await renderResultManagement(id);});
+ }catch(e){if(e.status===401)throw e;box.innerHTML='<p>결과 관리 상태를 불러오지 못했습니다. 잠시 후 다시 열어주세요.</p>';}
+}
+
 async function loadSession(id){
+ guest=false;guestResult=null;
  // 먼저 읽은 상태로 화면을 바꾸지 않고 답변과 revision의 원자적 스냅샷을 사용한다.
  const [snapshot,list]=await Promise.all([api('/sessions/'+id+'/answers'),api('/sessions/'+id+'/questions')]);
  if(snapshot.session.mode!=='SIMPLE')throw new Error('SIMPLE_SESSION_REQUIRED');
@@ -315,7 +357,7 @@ function render(){
  document.querySelector('#back').onclick=()=>{if(step>0){step--;render();focusMain();}};
  document.querySelector('#next').onclick=()=>action(async()=>{
   if(!valid(p,answers[q.questionId]))return;
-  session=await api('/sessions/'+session.sessionId+'/answers',{questionId:q.questionId,expectedRevision:session.revision,answerPayload:answers[q.questionId]});
+  if(!guest)session=await api('/sessions/'+session.sessionId+'/answers',{questionId:q.questionId,expectedRevision:session.revision,answerPayload:answers[q.questionId]});
   step++;render();focusMain();
  });
  bindZoom();updateNext();
@@ -345,7 +387,8 @@ function review(){
  document.querySelector('#review-back').onclick=()=>{step=9;render();focusMain();};
  document.querySelector('#submit').onclick=()=>action(async()=>{
   if(!questions.every(q=>valid(q.questionPayload,answers[q.questionId])))throw new Error('SIMPLE_ANSWERS_INCOMPLETE');
-  session=await api('/sessions/'+session.sessionId+'/submit',{expectedRevision:session.revision});
+  if(guest){guestResult=await api('/guest/simple/submit',{apparelScope:selectedScope,answers});session=guestResult.summary.session;}
+  else session=await api('/sessions/'+session.sessionId+'/submit',{expectedRevision:session.revision});
   await result();focusMain();
  });
 }
@@ -354,11 +397,11 @@ function evidenceCard(e,label){
 }
 async function result(){
  const resultSessionId=session.sessionId;
- const data=await api('/sessions/'+resultSessionId+'/preference-summary');
+ const data=guest?guestResult.summary:await api('/sessions/'+resultSessionId+'/preference-summary');
  if(data.session?.status!=='SUBMITTED')throw Object.assign(new Error('SESSION_NOT_SUBMITTED'),{code:'SESSION_NOT_SUBMITTED'});
  let representative=null,initialResult=null;
  try{
-  const initial=await api('/sessions/'+resultSessionId+'/initial-candidates');
+  const initial=guest?guestResult.initial:await api('/sessions/'+resultSessionId+'/initial-candidates');
   if(initial.sessionId===resultSessionId&&initial.definitionId===data.session.definitionId&&initial.revision===data.session.revision)
    {representative=initial.simpleRepresentative;initialResult=initial;}
  }catch(e){
@@ -372,11 +415,14 @@ async function result(){
  const scope=data.session.apparelScope||session.apparelScope;
  const scopeLabel=scope==='womens'?'여성복':scope==='mens'?'남성복':'';
  const textCards=[['Q01','마음이 가는 색'],['Q02','마음이 가는 스타일'],['Q03','좋아하는 실루엣'],['Q04','눈길이 가는 패턴']];
- main.innerHTML='<div class="taste-report"><section class="result-heading"><p class="eyebrow">FORM · TasteDNA</p><h1 class="report-edition">나의 TasteDNA 리포트</h1><p class="report-scope">'+esc(scopeLabel)+' · Simple</p>'+(comprehensive?finalMarkup(initialResult,'h2')+'<p class="report-status">직접 선택한 스타일 · '+esc(directLabel||(data.evidence.find(e=>e.questionId==='Q02')?.selections||[]).map(s=>s.label).join(' · ')||'직접 선택 근거 없음')+'</p>':'<span class="tag">'+(representativeLabel?'Simple 대표 스타일':'나의 직접 선호 기록')+'</span><h2>'+esc(representativeLabel||data.title)+'</h2><p class="muted">'+esc(data.description)+'</p><p class="report-status">직접 선택한 취향 요약 · 종합 유형은 아직 확정하지 않습니다.</p>')+'</section><div id="report-products"></div><section class="report-panel" aria-labelledby="direct-preferences"><p class="eyebrow">YOUR PERSONAL SELECTIONS</p><h2 id="direct-preferences">직접 고른 선호 항목</h2><div class="result-grid report-keywords">'+textCards.filter(([id])=>byQ(id)).map(([id,label])=>'<article class="result-card"><p class="source">'+id+'</p><h3>'+label+'</h3><div class="chips">'+(byQ(id)?.selections||[]).map(s=>'<span class="chip">'+esc(s.label)+'</span>').join('')+'</div></article>').join('')+'</div>'+(byQ('Q07')?'<div class="report-boundaries"><h3>명시적으로 회피한 요소</h3><p>'+esc(byQ('Q07').meaning==='NO_EXPLICIT_AVOIDANCE'?'회피 대상 없음':byQ('Q07').selections.map(s=>s.label).join(' · '))+'</p></div>':'')+(byQ('Q02')?.selections.length?'<p class="report-direction">탐색 방향 · 직접 선택한 '+esc(byQ('Q02').selections.map(s=>s.label).join(' · '))+' 스타일이 등록된 전시 상품을 살펴보세요.</p>':'')+'</section><details class="report-history"><summary>내 상세 선택 기록 <span>질문별 이미지와 비교 순위 보기</span></summary><div class="report-history-body">'+textCards.filter(([id])=>byQ(id)).map(([id,label])=>evidenceCard(byQ(id),label)).join('')+'<section class="result-section"><p class="eyebrow">THE LOOKS YOU CHOSE</p><h2>당신의 눈길이 머문 착장</h2><div class="result-grid">'+[['Q05','첫눈에 끌린 착장'],['Q06','내 옷으로 고른 옷'],['Q10','마지막에 선택한 착장']].filter(([id])=>byQ(id)).map(([id,label])=>evidenceCard(byQ(id),label)).join('')+'</div></section><section class="result-section"><p class="eyebrow">SMALL DETAILS, PERSONAL CHOICES</p><h2>디테일과 조합에서 발견한 취향</h2><div class="evidence-list">'+evidence.filter(e=>['Q08','Q09'].includes(e.questionId)).map(e=>evidenceCard(e)).join('')+'</div></section><section class="result-section avoidance"><p class="eyebrow">YOUR OWN BOUNDARIES</p><h2>내 옷으로는 피하고 싶은 것</h2>'+(byQ('Q07')?(byQ('Q07').meaning==='NO_EXPLICIT_AVOIDANCE'?'<p>이번 선택에서는 딱히 피하고 싶은 착장이 없었어요.</p>':'<p class="muted">직접 피하고 싶다고 고른 착장만 담았어요.</p><div class="result-grid">'+byQ('Q07').selections.map(s=>evidenceCard({...byQ('Q07'),selections:[s]},'회피한 착장')).join('')+'</div>'):'')+'</section></div></details><div class="result-note"><p>이 결과는 응답에 기반한 패션 선호 기록입니다. '+(comprehensive?'성격이나 심리 상태를 진단하지 않으며, 종합 RESULT는 이번 응답의 제한적인 취향 경향입니다.':'성격이나 심리 상태를 진단하지 않으며, 종합 패션 유형은 아직 확정하지 않습니다.')+' 첫인상과 마지막 선택이 달라도 서로 다른 순간의 선호로 함께 남겨요.</p><details><summary>기록 정보</summary><p>정의 '+esc(data.session.definitionId)+'<br>답변 버전 '+data.session.revision+' · 제출 완료</p></details></div><div class="result-actions"><button class="secondary" id="download">내 취향 기록 내려받기</button><button class="primary" id="restart">새로운 취향 기록 시작 →</button></div></div>';
+ main.innerHTML='<div class="taste-report"><section class="result-heading"><p class="eyebrow">FORM · TasteDNA</p><h1 class="report-edition">나의 TasteDNA 리포트</h1><p class="report-scope">'+esc(scopeLabel)+' · Simple</p>'+(comprehensive?finalMarkup(initialResult,'h2')+'<p class="report-status">직접 선택한 스타일 · '+esc(directLabel||(data.evidence.find(e=>e.questionId==='Q02')?.selections||[]).map(s=>s.label).join(' · ')||'직접 선택 근거 없음')+'</p>':'<span class="tag">'+(representativeLabel?'Simple 대표 스타일':'나의 직접 선호 기록')+'</span><h2>'+esc(representativeLabel||data.title)+'</h2><p class="muted">'+esc(data.description)+'</p><p class="report-status">직접 선택한 취향 요약 · 종합 유형은 아직 확정하지 않습니다.</p>')+'</section><div id="report-management"></div><div id="report-products"></div><section class="report-panel" aria-labelledby="direct-preferences"><p class="eyebrow">YOUR PERSONAL SELECTIONS</p><h2 id="direct-preferences">직접 고른 선호 항목</h2><div class="result-grid report-keywords">'+textCards.filter(([id])=>byQ(id)).map(([id,label])=>'<article class="result-card"><p class="source">'+id+'</p><h3>'+label+'</h3><div class="chips">'+(byQ(id)?.selections||[]).map(s=>'<span class="chip">'+esc(s.label)+'</span>').join('')+'</div></article>').join('')+'</div>'+(byQ('Q07')?'<div class="report-boundaries"><h3>명시적으로 회피한 요소</h3><p>'+esc(byQ('Q07').meaning==='NO_EXPLICIT_AVOIDANCE'?'회피 대상 없음':byQ('Q07').selections.map(s=>s.label).join(' · '))+'</p></div>':'')+(byQ('Q02')?.selections.length?'<p class="report-direction">탐색 방향 · 직접 선택한 '+esc(byQ('Q02').selections.map(s=>s.label).join(' · '))+' 스타일이 등록된 전시 상품을 살펴보세요.</p>':'')+'</section><details class="report-history"><summary>내 상세 선택 기록 <span>질문별 이미지와 비교 순위 보기</span></summary><div class="report-history-body">'+textCards.filter(([id])=>byQ(id)).map(([id,label])=>evidenceCard(byQ(id),label)).join('')+'<section class="result-section"><p class="eyebrow">THE LOOKS YOU CHOSE</p><h2>당신의 눈길이 머문 착장</h2><div class="result-grid">'+[['Q05','첫눈에 끌린 착장'],['Q06','내 옷으로 고른 옷'],['Q10','마지막에 선택한 착장']].filter(([id])=>byQ(id)).map(([id,label])=>evidenceCard(byQ(id),label)).join('')+'</div></section><section class="result-section"><p class="eyebrow">SMALL DETAILS, PERSONAL CHOICES</p><h2>디테일과 조합에서 발견한 취향</h2><div class="evidence-list">'+evidence.filter(e=>['Q08','Q09'].includes(e.questionId)).map(e=>evidenceCard(e)).join('')+'</div></section><section class="result-section avoidance"><p class="eyebrow">YOUR OWN BOUNDARIES</p><h2>내 옷으로는 피하고 싶은 것</h2>'+(byQ('Q07')?(byQ('Q07').meaning==='NO_EXPLICIT_AVOIDANCE'?'<p>이번 선택에서는 딱히 피하고 싶은 착장이 없었어요.</p>':'<p class="muted">직접 피하고 싶다고 고른 착장만 담았어요.</p><div class="result-grid">'+byQ('Q07').selections.map(s=>evidenceCard({...byQ('Q07'),selections:[s]},'회피한 착장')).join('')+'</div>'):'')+'</section></div></details><div class="result-note"><p>이 결과는 응답에 기반한 패션 선호 기록입니다. '+(comprehensive?'성격이나 심리 상태를 진단하지 않으며, 종합 RESULT는 이번 응답의 제한적인 취향 경향입니다.':'성격이나 심리 상태를 진단하지 않으며, 종합 패션 유형은 아직 확정하지 않습니다.')+' 첫인상과 마지막 선택이 달라도 서로 다른 순간의 선호로 함께 남겨요.</p><details><summary>기록 정보</summary><p>정의 '+esc(data.session.definitionId)+'<br>답변 버전 '+data.session.revision+' · 제출 완료</p></details></div><div class="result-actions"><button class="secondary" id="download">내 취향 기록 내려받기</button><button class="primary" id="restart">새로운 취향 기록 시작 →</button></div></div>';
  const products=document.createElement('section');products.className='matched-products';products.setAttribute('aria-live','polite');products.innerHTML='<p class="muted">연결된 FORM 전시 상품을 확인하고 있어요.</p>';main.querySelector('#report-products').append(products);
+ await renderResultManagement(resultSessionId);
  const bridge=document.createElement('section');bridge.className='result-shop';bridge.innerHTML='<div><p class="eyebrow">BACK TO YOUR WARDROBE</p><p>발견한 취향을 떠올리며 컬렉션을 둘러보세요.</p></div><button class="secondary" id="result-shop">쇼핑몰로 돌아가기 ↗</button>';main.append(bridge);bridge.querySelector('button').onclick=shop;
  document.querySelector('#restart').onclick=selectApparel;
+ document.querySelector('#download').hidden=guest;
  document.querySelector('#download').onclick=()=>{
+  if(guest)return;
   const lines=['TasteDNA — 나의 취향 기록',...(comprehensive?['종합 RESULT · '+comprehensive.candidateId+' · '+comprehensive.candidateName,finalMeaning(comprehensive)]:[]),data.title,'',...evidence.map(e=>e.questionId+(e.comparisonId?' / '+e.comparisonId:'')+' · '+e.prompt+'\n'+e.selections.map(s=>(s.rank?s.rank+'위 ':'')+s.label).join(' / ')+(e.notPreferred?.length?'\n이 비교에서 선호하지 않은 항목: '+e.notPreferred.map(s=>s.label).join(' / '):'')),'',comprehensive?'종합 RESULT와 직접 선택 기록을 구분하며 심리 진단으로 사용하지 않습니다.':'종합 유형이나 심리 진단이 아닌 직접 선택한 취향 기록입니다.'];
   const url=URL.createObjectURL(new Blob([lines.join('\n\n')],{type:'text/plain;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='TasteDNA.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -385,7 +431,7 @@ async function result(){
  // 리포트를 먼저 표시하고 상품 조회 실패는 이 영역 안에서만 안내한다.
  const heading='<p class="eyebrow">FORM · DEMO COLLECTION</p><h2>내가 선택한 스타일과 연결된 FORM 전시 상품</h2><p class="muted">Q02에서 직접 선택한 스타일과 상품에 등록된 스타일 속성이 일치하는 전시 상품입니다. 상품명과 가격은 시연용 예시입니다.</p>';
  try{
-  const matched=await api('/sessions/'+resultSessionId+'/matched-demo-products');
+  const matched=guest?guestResult.products:await api('/sessions/'+resultSessionId+'/matched-demo-products');
   // 전체 응답은 유지하고 화면에는 네 개씩 공개한다. 매칭 순서나 근거는 바꾸지 않는다.
   let visible=4;
   const renderProducts=()=>{

@@ -67,6 +67,9 @@ public class MemberSecurityConfig {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/api/v1/guest/simple/questions").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/guest/simple/submit").permitAll()
+                        .requestMatchers("/api/v1/member/results", "/api/v1/member/results/**").hasRole("MEMBER")
                         .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app.js", "/app.css",
                                 "/shop.mjs", "/shop.css", "/assessment-state.mjs", "/form-auth.mjs",
                                 "/assets/gender/**", "/api/v1/demo/products", "/api/v1/form/config").permitAll()

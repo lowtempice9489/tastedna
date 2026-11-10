@@ -13,6 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
+import java.util.function.Function;
+import com.tastedna.session.domain.SessionAnswer;
+import com.tastedna.session.api.dto.SessionResponse;
+import com.tastedna.scoring.application.RawObservationAggregator;
 
 // Q02 직접 관측과 상품에 등록된 스타일만 대조하며 RESULT나 이미지로 스타일을 추론하지 않는다.
 @Service
@@ -40,7 +44,18 @@ public class DemoProductMatchService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "SESSION_NOT_SUBMITTED");
         if (!"SIMPLE".equals(session.mode().name()))
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "SIMPLE_SESSION_REQUIRED");
-        var answer = answers.findById(new SessionAnswerId(id.toString(), "Q02"))
+        return match(session, questionId -> answers.findById(new SessionAnswerId(id.toString(), questionId)),
+                observations.collectRaw(member, id.toString()));
+    }
+
+    public Response match(SessionResponse session, Function<String, Optional<SessionAnswer>> lookup,
+            Map<String, List<RawObservationAggregator.RawObservation>> raw) {
+        UUID id = session.sessionId();
+        if (!"SUBMITTED".equals(session.status()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "SESSION_NOT_SUBMITTED");
+        if (!"SIMPLE".equals(session.mode().name()))
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "SIMPLE_SESSION_REQUIRED");
+        var answer = lookup.apply("Q02")
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Q02_ANSWER_REQUIRED"));
         var question = mapper.readTree(answer.getPresentedPayload());
         var selected = MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(answer.getAnswerPayload()));
@@ -48,7 +63,6 @@ public class DemoProductMatchService {
         for (var option : question.path("options"))
             labels.put(option.path("id").asString(), option.path("label").asString());
         Map<String, Evidence> evidence = new TreeMap<>();
-        var raw = observations.collectRaw(member, id.toString());
         for (var observation : raw
                 .getOrDefault("DIRECT_FASHION_LOOK_PREFERENCE", List.of())) {
             String code = observation.optionId();
@@ -62,7 +76,7 @@ public class DemoProductMatchService {
                 evidence.put(code, new Evidence("Q02", code, observation.type(), observation.answerRevision(), code, label));
         }
         Map<String, Evidence> colors = new TreeMap<>();
-        var colorAnswer = answers.findById(new SessionAnswerId(id.toString(), "Q01"));
+        var colorAnswer = lookup.apply("Q01");
         if (colorAnswer.isPresent()) {
             var saved = colorAnswer.get();
             var colorSelected = MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(saved.getAnswerPayload()));

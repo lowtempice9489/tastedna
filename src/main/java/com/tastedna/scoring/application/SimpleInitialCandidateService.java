@@ -16,6 +16,9 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.JsonNode;
 import java.util.*;
+import java.util.function.Function;
+import com.tastedna.session.domain.SessionAnswer;
+import com.tastedna.session.api.dto.SessionResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -57,19 +60,28 @@ public class SimpleInitialCandidateService {
         var session = sessions.get(memberId, sessionId);
         if (!"SUBMITTED".equals(session.status()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "SESSION_NOT_SUBMITTED");
+        return evaluate(session, questionId -> answers.findById(new SessionAnswerId(sessionId.toString(), questionId)),
+                observations.collectRaw(memberId, sessionId.toString()));
+    }
+
+    // 회원은 소유권 확인 후 저장 답변을, 비회원은 서버 검증 후 메모리 답변을 전달한다. 판별 규칙은 공유한다.
+    public Response evaluate(SessionResponse session, Function<String, Optional<SessionAnswer>> lookup,
+            Map<String, List<RawObservationAggregator.RawObservation>> raw) {
+        UUID sessionId = session.sessionId();
+        if (!"SUBMITTED".equals(session.status()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "SESSION_NOT_SUBMITTED");
         if (!"SIMPLE".equals(session.mode().name()))
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "SIMPLE_SESSION_REQUIRED");
-        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), "Q02"));
+        var answer = lookup.apply("Q02");
         var presented = answer.map(a -> mapper.readTree(a.getPresentedPayload())).orElseGet(mapper::createObjectNode);
         // 남녀 공통으로 승인된 이미지 Q02 계약을 기준으로 삼고, 세션의 실제 정의 ID는 보존한다.
         var approved = questions.findByIdDefinitionIdAndIdQuestionId(
                 "33333333-3333-4333-8333-333333333333", "Q02")
                 .orElseThrow(() -> new IllegalStateException("APPROVED_Q02_NOT_FOUND"));
-        var evidence = answer.isPresent() ? candidates.extractCompatibleDirectEvidence(memberId, sessionId.toString(),
-                session.definitionId().toString(), mapper.readTree(approved.getQuestionPayload()), presented)
+        var evidence = answer.isPresent() ? candidates.extractCompatibleDirectEvidence(session.definitionId().toString(), mapper.readTree(approved.getQuestionPayload()), presented, raw)
                 : List.<ResultCandidateEvidence>of();
-        var facts = observationFacts(observations.collectRaw(memberId, sessionId.toString()), session.definitionId().toString());
-        var combinationSupport = mensBlackCombinationSupport(sessionId, session.definitionId().toString(), facts);
+        var facts = observationFacts(raw, session.definitionId().toString());
+        var combinationSupport = mensBlackCombinationSupport(lookup, session.definitionId().toString(), facts);
         Map<String, String> labels = new HashMap<>();
         for (var option : presented.path("options")) labels.put(option.path("id").asString(), option.path("label").asString());
         Map<String, List<Source>> directSources = new HashMap<>();
@@ -82,11 +94,11 @@ public class SimpleInitialCandidateService {
         Map<String, List<Source>> additionalSources = new HashMap<>();
         for (var source : combinationSupport)
             additionalSources.computeIfAbsent("C03:A".equals(source.optionId()) ? "R01" : "R07", ignored -> new ArrayList<>()).add(source);
-        addOutfitEntrySupport(sessionId, session.definitionId().toString(), facts, additionalSources);
-        var rankedSupport = womensExpressiveRomanticSupport(sessionId, session.definitionId().toString(), facts);
+        addOutfitEntrySupport(lookup, session.definitionId().toString(), facts, additionalSources);
+        var rankedSupport = womensExpressiveRomanticSupport(lookup, session.definitionId().toString(), facts);
         if (!rankedSupport.isEmpty()) additionalSources.put("R15", rankedSupport);
         var compositeFacts = new ArrayList<>(directSources.values().stream().flatMap(Collection::stream).toList());
-        compositeFacts.addAll(compositeObservationSources(sessionId, session.definitionId(), facts));
+        compositeFacts.addAll(compositeObservationSources(lookup, session.definitionId(), facts));
         SimpleCandidateDiscrimination.compositeSupport(session.definitionId(), compositeFacts).forEach((candidate, sources) ->
                 additionalSources.computeIfAbsent(candidate, ignored -> new ArrayList<>()).addAll(sources));
         // 승인된 진입 관계의 합집합만 조회한다. 카탈로그 등록이나 후보 그룹 자체는 진입 근거가 아니다.
@@ -135,12 +147,12 @@ public class SimpleInitialCandidateService {
     }
 
     // 저장 선택·현재 정의·Raw revision을 함께 확인해 복합 해석에도 실제 관측만 전달한다.
-    private List<Source> compositeObservationSources(UUID sessionId, UUID definition, List<Observation> facts) {
+    private List<Source> compositeObservationSources(Function<String, Optional<SessionAnswer>> lookup, UUID definition, List<Observation> facts) {
         var keys = SimpleCandidateDiscrimination.compositeObservationKeys(definition);
         var result = new ArrayList<Source>();
         for (String q : facts.stream().map(Observation::questionId).distinct().sorted().toList()) {
             if ("Q02".equals(q) || keys.stream().noneMatch(k -> k.startsWith(q + "/"))) continue;
-            var answer = answers.findById(new SessionAnswerId(sessionId.toString(), q));
+            var answer = lookup.apply(q);
             var current = questions.findByIdDefinitionIdAndIdQuestionId(definition.toString(), q);
             if (answer.isEmpty() || current.isEmpty()) continue;
             var stored = answer.get();
@@ -206,30 +218,30 @@ public class SimpleInitialCandidateService {
     }
 
     // 정확한 전체 착장의 긍정 관측만 연결한다. 최종 충분성은 별도 B 정책에서 판정한다.
-    private void addOutfitEntrySupport(UUID sessionId, String definitionId, List<Observation> facts,
+    private void addOutfitEntrySupport(Function<String, Optional<SessionAnswer>> lookup, String definitionId, List<Observation> facts,
                                       Map<String, List<Source>> support) {
         if ("33333333-3333-4333-8333-333333333333".equals(definitionId)) {
             // 09B: 블레이저·셔츠·슬랙스와 스웨트셔츠 일상 착장을 Core 근거로 한정한다.
-            addOutfitSource(sessionId, facts, support, "Q10", "J", "R03", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/J.png");
-            addOutfitSource(sessionId, facts, support, "Q10", "A", "R05", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/Q10_A.png");
-            addOutfitSource(sessionId, facts, support, "Q10", "D", "R13", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/Q10_D.png");
-            addOutfitSource(sessionId, facts, support, "Q05", "B", "R16", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/male/Q05/TasteDNA_Q05_B.png");
-            addOutfitSource(sessionId, facts, support, "Q05", "C", "R17", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/male/Q05/TasteDNA_Q05_C.png");
+            addOutfitSource(lookup, facts, support, "Q10", "J", "R03", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/J.png");
+            addOutfitSource(lookup, facts, support, "Q10", "A", "R05", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/Q10_A.png");
+            addOutfitSource(lookup, facts, support, "Q10", "D", "R13", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/male/Q10/Q10_D.png");
+            addOutfitSource(lookup, facts, support, "Q05", "B", "R16", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/male/Q05/TasteDNA_Q05_B.png");
+            addOutfitSource(lookup, facts, support, "Q05", "C", "R17", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/male/Q05/TasteDNA_Q05_C.png");
         } else if ("6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definitionId)) {
             // 09B: 스쿨룩·일상 착장·셔링 블라우스/플레어 스커트의 직접 선택만 사용한다.
-            addOutfitSource(sessionId, facts, support, "Q10", "I", "R04", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/I.png");
-            addOutfitSource(sessionId, facts, support, "Q10", "A", "R05", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/A.png");
-            addOutfitSource(sessionId, facts, support, "Q05", "C", "R09", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/female/Q05/C.png");
-            addOutfitSource(sessionId, facts, support, "Q05", "B", "R13", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/female/Q05/B.png");
-            addOutfitSource(sessionId, facts, support, "Q10", "G", "R13", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/G.png");
-            addOutfitSource(sessionId, facts, support, "Q06", "B", "R17", "DIRECT_CLOTHING_PREFERENCE", "/assets/gender/female/Q06/B.png");
-            addOutfitSource(sessionId, facts, support, "Q10", "H", "R17", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/H.png");
+            addOutfitSource(lookup, facts, support, "Q10", "I", "R04", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/I.png");
+            addOutfitSource(lookup, facts, support, "Q10", "A", "R05", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/A.png");
+            addOutfitSource(lookup, facts, support, "Q05", "C", "R09", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/female/Q05/C.png");
+            addOutfitSource(lookup, facts, support, "Q05", "B", "R13", "DIRECT_OUTFIT_PREFERENCE", "/assets/gender/female/Q05/B.png");
+            addOutfitSource(lookup, facts, support, "Q10", "G", "R13", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/G.png");
+            addOutfitSource(lookup, facts, support, "Q06", "B", "R17", "DIRECT_CLOTHING_PREFERENCE", "/assets/gender/female/Q06/B.png");
+            addOutfitSource(lookup, facts, support, "Q10", "H", "R17", "DIRECT_FINAL_OUTFIT_PREFERENCE", "/assets/gender/female/Q10/H.png");
         }
     }
 
-    private void addOutfitSource(UUID sessionId, List<Observation> facts, Map<String, List<Source>> support,
+    private void addOutfitSource(Function<String, Optional<SessionAnswer>> lookup, List<Observation> facts, Map<String, List<Source>> support,
                                 String questionId, String optionId, String candidateId, String type, String image) {
-        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), questionId));
+        var answer = lookup.apply(questionId);
         if (answer.isEmpty()) return;
         var stored = answer.get();
         var presented = mapper.readTree(stored.getPresentedPayload());
@@ -254,9 +266,9 @@ public class SimpleInitialCandidateService {
     }
 
     // C05의 D 최상위 선택만 인정한다. 후순위·미선택을 후보 회피로 바꾸지 않는다.
-    private List<Source> womensExpressiveRomanticSupport(UUID sessionId, String definitionId, List<Observation> facts) {
+    private List<Source> womensExpressiveRomanticSupport(Function<String, Optional<SessionAnswer>> lookup, String definitionId, List<Observation> facts) {
         if (!"6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definitionId)) return List.of();
-        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), "Q08"));
+        var answer = lookup.apply("Q08");
         if (answer.isEmpty()) return List.of();
         var stored = answer.get();
         var selection = ComparisonAnswerPayloadExtractor.extractSelections(mapper.readTree(stored.getAnswerPayload())).get("C05");
@@ -279,9 +291,9 @@ public class SimpleInitialCandidateService {
         return List.of();
     }
 
-    private List<Source> mensBlackCombinationSupport(UUID sessionId, String definitionId, List<Observation> facts) {
+    private List<Source> mensBlackCombinationSupport(Function<String, Optional<SessionAnswer>> lookup, String definitionId, List<Observation> facts) {
         if (!"33333333-3333-4333-8333-333333333333".equals(definitionId)) return List.of();
-        var answer = answers.findById(new SessionAnswerId(sessionId.toString(), "Q09"));
+        var answer = lookup.apply("Q09");
         if (answer.isEmpty()) return List.of();
         var stored = answer.get();
         var selected = ComparisonAnswerPayloadExtractor.extractSelections(mapper.readTree(stored.getAnswerPayload())).get("C03");

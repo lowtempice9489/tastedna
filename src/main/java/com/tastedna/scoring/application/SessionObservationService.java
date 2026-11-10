@@ -46,12 +46,13 @@ public class SessionObservationService {
                         "SESSION_NOT_FOUND"
                 ));
 
-        String definitionId = session.getDefinitionId();
+        return collectRaw(session, answerRepository.findByIdSessionIdOrderByIdQuestionIdAsc(sessionId));
+    }
 
-        List<SessionAnswer> answers = new ArrayList<>(
-                answerRepository
-                        .findByIdSessionIdOrderByIdQuestionIdAsc(sessionId)
-        );
+    // 서버가 검증한 일시적 답변도 동일한 관측 파이프라인을 사용하며 저장하지 않는다.
+    public Map<String, List<RawObservationAggregator.RawObservation>> collectRaw(TestSession session, List<SessionAnswer> input) {
+        String definitionId = session.getDefinitionId();
+        List<SessionAnswer> answers = new ArrayList<>(input);
 
         if (answers.isEmpty()) {
             throw new IllegalStateException(
