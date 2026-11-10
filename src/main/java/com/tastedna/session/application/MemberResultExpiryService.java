@@ -50,6 +50,11 @@ public class MemberResultExpiryService {
         return evaluate(session, protection, now);
     }
 
+    public static void requireAccessible(TestSession session, MemberResultRetention protection) {
+        if (evaluate(session, protection, LocalDateTime.now(ZoneOffset.UTC)).status() == Status.EXPIRED)
+            throw new ResponseStatusException(HttpStatus.GONE, "RESULT_EXPIRED");
+    }
+
     static Review evaluate(TestSession session, MemberResultRetention protection, LocalDateTime now) {
         Status status;
         var expiry = session.getTemporaryResultExpiresAt();

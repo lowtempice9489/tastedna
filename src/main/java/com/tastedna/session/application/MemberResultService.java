@@ -38,16 +38,18 @@ public class MemberResultService {
                 MemberResultRetention.MAX_SAVED_RESULTS);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Entry get(String member, UUID id) {
-        owned(member, id, false);
+        var session = owned(member, id, true);
+        MemberResultExpiryService.requireAccessible(session, retention.findForUpdate(id.toString(), member).orElse(null));
         return retention.findBySessionIdAndMallMemberId(id.toString(), member).map(this::entry)
                 .orElseGet(() -> new Entry(id.toString(), false, false, null, null, null));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public SimpleInitialCandidateService.Response readResult(String member, UUID id) {
-        var session = owned(member, id, false);
+        var session = owned(member, id, true);
+        MemberResultExpiryService.requireAccessible(session, retention.findForUpdate(id.toString(), member).orElse(null));
         return retention.findBySessionIdAndMallMemberId(id.toString(), member)
                 .map(row -> checkedSnapshot(row, session)).orElseGet(() -> results.find(member, id));
     }
@@ -57,6 +59,7 @@ public class MemberResultService {
         lockMember(member);
         var session = owned(member, id, true);
         var existing = retention.findBySessionIdAndMallMemberId(id.toString(), member);
+        MemberResultExpiryService.requireAccessible(session, existing.orElse(null));
         if (existing.isPresent() && existing.get().getSavedSlot() != null) return entry(existing.get());
         var used = retention.findByMallMemberIdAndSavedSlotIsNotNullOrderBySavedAtDesc(member).stream()
                 .map(MemberResultRetention::getSavedSlot).toList();
@@ -72,9 +75,13 @@ public class MemberResultService {
     @Transactional
     public Entry unsave(String member, UUID id) {
         lockMember(member);
-        owned(member, id, true);
+        var session = owned(member, id, true);
         var row = retention.findBySessionIdAndMallMemberId(id.toString(), member);
         row.ifPresent(MemberResultRetention::removeSaved);
+        if (row.isPresent() && !row.get().isProtected()
+                && MemberResultExpiryService.evaluate(session, row.get(), now()).status()
+                    == MemberResultExpiryService.Status.EXPIRED)
+            return new Entry(id.toString(), false, false, null, null, null);
         return row.map(this::entry).orElseGet(() -> new Entry(id.toString(), false, false, null, null, null));
     }
 
@@ -86,6 +93,7 @@ public class MemberResultService {
         var existing = retention.findBySessionIdAndMallMemberId(
                 id.toString(), member);
 
+        MemberResultExpiryService.requireAccessible(session, existing.orElse(null));
         var evaluation = existing
                 .map(row -> checkedSnapshot(row, session))
                 .orElseGet(() -> results.find(member, id));

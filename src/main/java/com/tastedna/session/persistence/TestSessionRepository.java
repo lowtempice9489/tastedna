@@ -54,6 +54,24 @@ public interface TestSessionRepository
     List<String> findTemporaryExpiryReviewIds(@Param("memberId") String memberId,
                                             @Param("now") LocalDateTime now, Pageable page);
 
+    interface CleanupCandidate {
+        String getSessionId();
+        String getMallMemberId();
+    }
+
+    @Query("""
+            select s.sessionId as sessionId, s.mallMemberId as mallMemberId from TestSession s
+            where s.sessionId > :afterId and s.mallMemberId is not null
+              and s.status = 'SUBMITTED' and s.temporaryResultExpiresAt is not null
+              and s.submittedAt <= :cutoff
+              and not exists (select r.sessionId from MemberResultRetention r
+                  where r.sessionId = s.sessionId and r.mallMemberId = s.mallMemberId
+                    and (r.savedSlot is not null or r.currentMarker is not null))
+            order by s.sessionId
+            """)
+    List<CleanupCandidate> findCleanupCandidates(@Param("afterId") String afterId,
+                                                @Param("cutoff") LocalDateTime cutoff, Pageable page);
+
     // 답변 저장·세션 재개 중 동일 세션에 대한 동시 변경을 제어하기 위해 DB 행 잠금을 사용한다.
     // 세션 ID와 회원 ID를 함께 검사하며, 트랜잭션 종료 시 잠금이 해제된다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
