@@ -281,17 +281,64 @@ function directResultMarkup(initial){
  const direct=initial?.simpleRepresentative;
  return direct?'<p>직접 선택한 스타일 · '+esc(direct.candidateId+' · '+direct.candidateName)+'</p>':'<p>직접 선호와 종합 결과는 결과 리포트에서 확인하세요.</p>';
 }
+
 async function renderResultManagement(id){
  const box=document.querySelector('#report-management');
- if(guest){box.innerHTML='<p class="report-status">비회원 결과 · 이 화면에서만 확인할 수 있으며 계정 저장·현재 설정·로그인 후 이전은 지원하지 않습니다. 새로고침하면 결과가 사라집니다.</p>';return;}
+
+ if(guest){
+  box.innerHTML='<p class="report-status">비회원 결과 · 이 화면에서만 확인할 수 있으며 계정 저장·현재 설정·로그인 후 이전은 지원하지 않습니다. 새로고침하면 결과가 사라집니다.</p>';
+  return;
+ }
+
  if(authMode!=='member'||!member)return;
+
  try{
   const state=await api('/member/results/'+id);
-  box.innerHTML='<section class="report-panel"><h2>나의 TasteDNA 관리</h2><p>테스트 완료와 저장, 현재 설정은 각각 별개의 선택입니다.</p><button class="secondary" id="result-save">'+(state.saved?'저장 해제':'결과 저장')+'</button> <button class="secondary" id="result-current">'+(state.current?'현재 TasteDNA · 설정 해제':'현재 TasteDNA로 설정')+'</button></section>';
-  document.querySelector('#result-save').onclick=()=>action(async()=>{await api('/member/results/'+id+(state.saved?'/unsave':'/save'),{});await renderResultManagement(id);});
-  document.querySelector('#result-current').onclick=()=>action(async()=>{await api(state.current?'/member/results/current/clear':'/member/results/'+id+'/current',{});await renderResultManagement(id);});
- }catch(e){if(e.status===401)throw e;box.innerHTML='<p>결과 관리 상태를 불러오지 못했습니다. 잠시 후 다시 열어주세요.</p>';}
+  const initial=state.result||await api('/sessions/'+id+'/initial-candidates');
+
+  const isFinal=initial?.finalResult===true
+      &&initial?.decision?.status==='FINAL'
+      &&!!initial?.decision?.representativeCandidate;
+
+  const currentControl=state.current
+      ?'<button class="secondary" id="result-current">현재 TasteDNA · 설정 해제</button>'
+      :isFinal
+          ?'<button class="secondary" id="result-current">현재 TasteDNA로 설정</button>'
+          :'<p class="muted">종합 RESULT가 확정되지 않아 현재 TasteDNA로 설정할 수 없습니다. 결과 저장은 가능합니다.</p>';
+
+  box.innerHTML='<section class="report-panel">'
+      +'<h2>나의 TasteDNA 관리</h2>'
+      +'<p>테스트 완료와 저장, 현재 설정은 각각 별개의 선택입니다.</p>'
+      +'<button class="secondary" id="result-save">'
+      +(state.saved?'저장 해제':'결과 저장')
+      +'</button> '
+      +currentControl
+      +'</section>';
+
+  box.querySelector('#result-save').onclick=()=>action(async()=>{
+   await api('/member/results/'+id+(state.saved?'/unsave':'/save'),{});
+   await renderResultManagement(id);
+  });
+
+  const currentButton=box.querySelector('#result-current');
+  if(currentButton){
+   currentButton.onclick=()=>action(async()=>{
+    await api(
+        state.current
+            ?'/member/results/current/clear'
+            :'/member/results/'+id+'/current',
+        {}
+    );
+    await renderResultManagement(id);
+   });
+  }
+
+ }catch(e){
+  if(e.status===401)throw e;
+  box.innerHTML='<p>결과 관리 상태를 불러오지 못했습니다. 잠시 후 다시 열어주세요.</p>';
+ }
 }
+
 
 async function loadSession(id){
  guest=false;guestResult=null;

@@ -82,11 +82,32 @@ public class MemberResultService {
     public Entry setCurrent(String member, UUID id) {
         lockMember(member);
         var session = owned(member, id, true);
-        var target = retention.findBySessionIdAndMallMemberId(id.toString(), member)
-                .orElseGet(() -> capture(member, id, session));
-        // 회원 잠금 안에서 이전 현재 행을 먼저 해제·flush해야 UNIQUE 제약과 원자적 교체를 함께 지킨다.
-        retention.findByMallMemberIdAndCurrentMarker(member, 1).filter(row -> !row.getSessionId().equals(id.toString()))
-                .ifPresent(row -> { row.clearCurrent(); retention.flush(); });
+
+        var existing = retention.findBySessionIdAndMallMemberId(
+                id.toString(), member);
+
+        var evaluation = existing
+                .map(row -> checkedSnapshot(row, session))
+                .orElseGet(() -> results.find(member, id));
+
+        if (!evaluation.finalResult()
+                || evaluation.decision() == null
+                || !"FINAL".equals(evaluation.decision().status())
+                || evaluation.decision().representativeCandidate() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "CURRENT_TASTEDNA_REQUIRES_FINAL");
+        }
+
+        var target = existing.orElseGet(() -> capture(member, id, session));
+
+        retention.findByMallMemberIdAndCurrentMarker(member, 1)
+                .filter(row -> !row.getSessionId().equals(id.toString()))
+                .ifPresent(row -> {
+                    row.clearCurrent();
+                    retention.flush();
+                });
+
         target.setCurrent(now());
         return entry(retention.saveAndFlush(target));
     }
