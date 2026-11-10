@@ -43,13 +43,13 @@ class SimpleCandidateDiscriminationTest {
         assertTrue(evidence.approvedConflicts().isEmpty());
         assertFalse(evidence.missingRequirements().contains("CONFLICT_RESOLUTION_RULE_REQUIRED"));
         assertTrue(evidence.missingRequirements().contains("UNRESOLVED_OBSERVATION_RELATIONS"));
-        assertTrue(review.validatedCandidateIds().isEmpty());
+        assertEquals(List.of("R01"), review.validatedCandidateIds());
         assertEquals(response.definitionId(), review.definitionId());
         assertEquals(response.revision(), review.revision());
         assertEquals(review, SimpleCandidateDiscrimination.reviewInitialCandidates(response));
     }
 
-    @Test void reviewWithoutQ02OrPositiveEvidenceNeverGrantsSufficiency() {
+    @Test void visualSupportWithoutQ02GrantsSufficiencyButMissingEvidenceDoesNot() {
         var source = new SimpleInitialCandidateService.Source("Q10", "착장", "D", "착장 D",
                 "DIRECT_FINAL_OUTFIT_PREFERENCE", "EXPLICIT_SELECTION", 5);
         var supported = new SimpleInitialCandidateService.Candidate("R13", "Graphic Street", List.of(),
@@ -61,8 +61,63 @@ class SimpleCandidateDiscriminationTest {
         assertEquals(Set.of("Q10"), review.candidates().getFirst().supportingQuestions());
         assertTrue(review.candidates().getFirst().directPreference().isEmpty());
         assertTrue(review.candidates().getLast().missingRequirements().contains("NO_APPROVED_POSITIVE_EVIDENCE"));
-        assertTrue(review.validatedCandidateIds().isEmpty());
+        assertEquals(List.of("R13"), review.validatedCandidateIds());
         assertFalse(review.missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
+    }
+
+    @Test void sufficientRelationsRejectWrongScopeOptionTypeEvidenceAndApprovedConflict() {
+        var source = new SimpleInitialCandidateService.Source("Q09", "비교", "C03:A", "미니멀",
+                "DIRECT_COMBINATION_PREFERENCE", "EXPLICIT_SELECTION", 4);
+        for (var invalid : List.of(
+                new SimpleInitialCandidateService.Source("Q09", "비교", "C03:B", "미니멀", source.observationType(), source.evidenceType(), 4),
+                new SimpleInitialCandidateService.Source("Q08", "비교", "C03:A", "미니멀", source.observationType(), source.evidenceType(), 4),
+                new SimpleInitialCandidateService.Source("Q09", "비교", "C03:A", "미니멀", "OTHER", source.evidenceType(), 4),
+                new SimpleInitialCandidateService.Source("Q09", "비교", "C03:A", "미니멀", source.observationType(), "UNSELECTED_IN_RANKED_GROUP", 4))) {
+            var c = new SimpleInitialCandidateService.Candidate("R01", "Minimal", List.of(),
+                    new SimpleInitialCandidateService.CandidateEvidence(List.of(invalid), List.of(), List.of(), "PENDING"));
+            assertTrue(SimpleCandidateDiscrimination.reviewInitialCandidates(reviewInput(List.of(c))).validatedCandidateIds().isEmpty());
+        }
+        var conflict = new SimpleInitialCandidateService.Observation("test", "Q07", "A", null, "test", "test", "test", 4, null);
+        // 충돌 자료형의 차단 경계만 검사하며 새로운 실제 후보-회피 관계를 등록하지 않는다.
+        var c = new SimpleInitialCandidateService.Candidate("R01", "Minimal", List.of(),
+                new SimpleInitialCandidateService.CandidateEvidence(List.of(source), List.of(conflict), List.of(), "PENDING"));
+        assertTrue(SimpleCandidateDiscrimination.reviewInitialCandidates(reviewInput(List.of(c))).validatedCandidateIds().isEmpty());
+        c = new SimpleInitialCandidateService.Candidate("R01", "Minimal", List.of(),
+                new SimpleInitialCandidateService.CandidateEvidence(List.of(source), List.of(), List.of(), "PENDING"));
+        var input = reviewInput(List.of(c));
+        var womens = new SimpleInitialCandidateService.Response(input.sessionId(),
+                UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52"), 10, input.status(), false, input.candidates(), input.decision(), null);
+        assertTrue(SimpleCandidateDiscrimination.reviewInitialCandidates(womens).validatedCandidateIds().isEmpty());
+    }
+
+    @Test void equivalentValidatedPoolReductionIsStableAndDoesNotInventCandidates() {
+        // 이미 충분성이 성립했다고 전달된 집합의 S2 계약만 검사한다. 실제 활성 매핑을 추가하지 않는다.
+        var ids = List.of("R01", "R02", "R03", "R04", "R05", "R06", "R07");
+        var session = new UUID(0, 1);
+        for (int count = 0; count <= ids.size(); count++) {
+            var input = ids.subList(0, count);
+            var reduced = SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(session, 10, input, "B-v1");
+            assertEquals(Math.min(5, count), reduced.size());
+            assertTrue(input.containsAll(reduced));
+            var reversed = new ArrayList<>(input);
+            Collections.reverse(reversed);
+            reversed.addAll(input);
+            assertEquals(reduced, SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(session, 10, reversed, "B-v1"));
+            if (count <= 5) assertEquals(input, reduced);
+            if (count > 0) assertTrue(reduced.contains(SimpleCandidateDiscrimination.selectValidatedRepresentative(session, 10, reduced, "B-v1").orElseThrow()));
+        }
+        assertThrows(IllegalArgumentException.class, () -> SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(session, 10, List.of("R26"), "B-v1"));
+    }
+
+    @Test void reductionGoldenVectorsIncludeSessionRevisionPoolAndRuleVersion() {
+        // 독립 SHA-256/Java Random 계산 벡터이며 입력 변화가 반드시 결과 ID 변화인 것은 아니다.
+        var ids = List.of("R01", "R02", "R03", "R04", "R05", "R06", "R07");
+        assertEquals(List.of("R03", "R04", "R05", "R06", "R07"), SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(new UUID(0, 1), 10, ids, "B-v1"));
+        assertEquals(List.of("R01", "R03", "R05", "R06", "R07"), SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(new UUID(0, 2), 10, ids, "B-v1"));
+        assertEquals(List.of("R03", "R04", "R05", "R06", "R07"), SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(new UUID(0, 1), 11, ids, "B-v1"));
+        assertEquals(List.of("R02", "R03", "R04", "R05", "R06"), SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(new UUID(0, 1), 10, ids, "B-v2"));
+        assertEquals(List.of("R02", "R03", "R04", "R05", "R06"), SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(new UUID(0, 1), 10,
+                List.of("R01", "R02", "R03", "R04", "R05", "R06", "R08"), "B-v1"));
     }
 
     SimpleInitialCandidateService.Response reviewInput(List<SimpleInitialCandidateService.Candidate> candidates) {

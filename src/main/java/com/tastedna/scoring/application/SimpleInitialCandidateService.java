@@ -36,7 +36,12 @@ public class SimpleInitialCandidateService {
                                     List<Observation> unresolved, String status) {}
     public record Candidate(String candidateId, String candidateName, List<Source> sources,
                             CandidateEvidence evidence) {}
-    public record Decision(String status, List<Candidate> results, List<String> missingRequirements) {}
+    public record Decision(String status, List<Candidate> results, List<String> missingRequirements,
+                           String representativeCandidate, String ruleVersion) {
+        public Decision(String status, List<Candidate> results, List<String> missingRequirements) {
+            this(status, results, missingRequirements, null, SimpleCandidateDiscrimination.RULE_VERSION);
+        }
+    }
     public record Response(UUID sessionId, UUID definitionId, long revision, String status,
                            boolean finalResult, List<Candidate> candidates, Decision decision,
                            Candidate simpleRepresentative) {}
@@ -93,23 +98,26 @@ public class SimpleInitialCandidateService {
                     new CandidateEvidence(List.copyOf(positive), List.of(), unresolved, "CANDIDATE_RELATIONS_PENDING")));
         }
         result.sort(Comparator.comparing(Candidate::candidateId));
-        // Q02 직접 선택은 초기 후보 근거다. 승인된 구별·확정 규칙 없이 최종 RESULT로 승격하지 않는다.
-        List<String> missing = new ArrayList<>();
-        // 5개 제한은 최종 후보군에만 적용한다. 초기 근거는 보존하고 축소 정책 미확정을 알린다.
-        if (result.size() > 5) missing.add("CANDIDATE_LIMIT_POLICY_REQUIRED");
-        if (result.isEmpty()) missing.add("MAPPED_DIRECT_PREFERENCE_EVIDENCE");
-        missing.addAll(List.of("VERIFIED_CANDIDATE_EVIDENCE_MAPPING",
-                "NEGATIVE_AND_RANKED_EVIDENCE_INTERPRETATION",
-                "CANDIDATE_DISCRIMINATION_RULE", "FINALIZATION_RULE"));
         var selected = answer.map(a -> MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(a.getAnswerPayload())))
                 .orElse(List.of());
-        // 최신 단일 직접 선택만 Simple 대표로 표시하며 종합 RESULT의 보류 상태는 유지한다.
+        // 최신 단일 직접 선택의 Simple 대표는 종합 RESULT 대표와 별개로 보존한다.
         var directCandidates = result.stream().filter(c -> !c.sources().isEmpty()).toList();
         Candidate representative = selected.size() == 1 && directCandidates.size() == 1
                 && directCandidates.getFirst().sources().stream().allMatch(s -> selected.contains(s.optionId())
                 && s.answerRevision() == answer.orElseThrow().getAnswerRevision()) ? directCandidates.getFirst() : null;
-        return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", false,
-                List.copyOf(result), new Decision("DEFERRED", List.of(), List.copyOf(missing)), representative);
+        var initial = new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", false,
+                List.copyOf(result), new Decision("DEFERRED", List.of(), List.of()), representative);
+        var review = SimpleCandidateDiscrimination.reviewInitialCandidates(initial);
+        var valid = SimpleCandidateDiscrimination.reduceEquivalentValidatedCandidates(sessionId, session.revision(),
+                review.validatedCandidateIds(), SimpleCandidateDiscrimination.RULE_VERSION);
+        var selectedResult = SimpleCandidateDiscrimination.selectValidatedRepresentative(sessionId, session.revision(),
+                valid, SimpleCandidateDiscrimination.RULE_VERSION);
+        var finalResults = result.stream().filter(c -> valid.contains(c.candidateId())).toList();
+        var missing = new ArrayList<>(review.missingRequirements());
+        if (result.isEmpty()) missing.addFirst("MAPPED_DIRECT_PREFERENCE_EVIDENCE");
+        return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", !finalResults.isEmpty(),
+                initial.candidates(), new Decision(finalResults.isEmpty() ? "DEFERRED" : "FINAL", finalResults, List.copyOf(missing),
+                        selectedResult.orElse(null), SimpleCandidateDiscrimination.RULE_VERSION), representative);
     }
 
     // 07A에서 허용한 전체 착장의 초기 검토 관계만 연결한다. 최종 충분성이나 VERIFIED를 뜻하지 않는다.

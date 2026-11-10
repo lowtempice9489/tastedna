@@ -343,7 +343,7 @@ class MemberAuthHttpTest {
         verify(initialCandidates).extractCompatibleDirectEvidence(eq(memberId), eq(id), eq(definitionId), any(), any());
         when(answers.findById(new com.tastedna.session.domain.SessionAnswerId(id, "Q06"))).thenReturn(Optional.of(saved.get("Q06")));
         mvc.perform(get("/api/v1/sessions/" + id + "/matched-demo-products").session(browser.session()))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.matchType").value("EXACT_SELECTED_IMAGE"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.matchType").value("EXPLICIT_STYLE_ATTRIBUTE"))
                 .andExpect(jsonPath("$.products").isEmpty());
     }
 }

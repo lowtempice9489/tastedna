@@ -12,13 +12,15 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 // Simple RESULT 초기 후보의 구별 가능성과 판별 보류 사유를 표현한다.
-// 현재는 검증되지 않은 후보 간 우열을 정하거나 최종 RESULT를 생성하지 않는다.
+// 승인된 Simple B 충분성만 최종 경로에 사용하며 미승인 관계는 보류한다.
 public record SimpleCandidateDiscrimination(
         Set<String> eligibleCandidates,
         String representativeCandidate,
         String finalResult,
         String reason
 ) {
+
+    public static final String RULE_VERSION = "simple-B-v1/S2-SHA256-v1/representative-SHA256-v1";
 
     public static final String INSUFFICIENT_EVIDENCE =
             "INSUFFICIENT_DISCRIMINATING_EVIDENCE";
@@ -35,6 +37,7 @@ public record SimpleCandidateDiscrimination(
     // 본인·제출·최신 답변 검증을 거친 초기 후보 응답만 평가한다. 질문 수는 출처 요약이지 점수가 아니다.
     public static CandidatePoolReview reviewInitialCandidates(SimpleInitialCandidateService.Response initial) {
         var reviews = new ArrayList<CandidateReview>();
+        var validated = new TreeSet<String>();
         for (var candidate : initial.candidates()) {
             var positive = candidate.evidence().positive().stream().distinct()
                     .sorted(Comparator.comparing(Source::questionId).thenComparing(Source::optionId)
@@ -50,23 +53,65 @@ public record SimpleCandidateDiscrimination(
             if (positive.isEmpty()) missing.add("NO_APPROVED_POSITIVE_EVIDENCE");
             if (!conflicts.isEmpty()) missing.add("CONFLICT_RESOLUTION_RULE_REQUIRED");
             if (!unresolved.isEmpty()) missing.add("UNRESOLVED_OBSERVATION_RELATIONS");
-            missing.add("CANDIDATE_SUFFICIENCY_RULE_REQUIRED");
+            boolean sufficient = additional.stream().anyMatch(s -> sufficientVisual(initial.definitionId(), candidate.candidateId(), s));
+            if (!sufficient) missing.add("CANDIDATE_SUFFICIENCY_RULE_REQUIRED");
+            if (sufficient && conflicts.isEmpty()) validated.add(candidate.candidateId());
             reviews.add(new CandidateReview(candidate.candidateId(), direct, additional,
                     Collections.unmodifiableSet(questions), conflicts, unresolved, List.copyOf(missing)));
         }
         reviews.sort(Comparator.comparing(CandidateReview::candidateId));
         var missing = new ArrayList<String>();
-        missing.add("CANDIDATE_SUFFICIENCY_RULE_REQUIRED");
-        if (reviews.size() > 5) {
-            missing.add("CANDIDATE_LIMIT_POLICY_REQUIRED");
-            missing.add("CANDIDATE_BOUNDARY_DISCRIMINATION_REQUIRED");
+        if (validated.isEmpty()) {
+            missing.add("CANDIDATE_SUFFICIENCY_RULE_REQUIRED");
+            if (reviews.stream().anyMatch(r -> !r.approvedConflicts().isEmpty())) missing.add("CONFLICT_RESOLUTION_RULE_REQUIRED");
         }
-        // 충분성·경계 구별 규칙이 없으므로 5개 이하도 유효 판정하지 않고, 초과 후보도 삭제하지 않는다.
         return new CandidatePoolReview(initial.sessionId(), initial.definitionId(), initial.revision(),
-                List.copyOf(reviews), List.of(), List.copyOf(missing));
+                List.copyOf(reviews), List.copyOf(validated), List.copyOf(missing));
     }
 
-    // 충분성 검증을 마친 후보만 호출자가 전달한다. 초기 후보 API에는 연결하지 않는다.
+    // 출처·이미지·최신 답변 검사를 통과한 긍정 근거에만 승인된 B 정책을 적용한다.
+    private static boolean sufficientVisual(UUID definition, String candidate, Source source) {
+        if (!"EXPLICIT_SELECTION".equals(source.evidenceType())) return false;
+        String key = candidate + "/" + source.questionId() + "/" + source.optionId() + "/" + source.observationType();
+        return switch (definition.toString()) {
+            case "33333333-3333-4333-8333-333333333333" -> Set.of(
+                    "R01/Q09/C03:A/DIRECT_COMBINATION_PREFERENCE",
+                    "R07/Q09/C03:B/DIRECT_COMBINATION_PREFERENCE",
+                    "R13/Q10/D/DIRECT_FINAL_OUTFIT_PREFERENCE",
+                    "R16/Q05/B/DIRECT_OUTFIT_PREFERENCE",
+                    "R17/Q05/C/DIRECT_OUTFIT_PREFERENCE").contains(key);
+            case "6acc799d-1348-4f34-b756-593e9f5bfd52" -> Set.of(
+                    "R13/Q05/B/DIRECT_OUTFIT_PREFERENCE",
+                    "R13/Q10/G/DIRECT_FINAL_OUTFIT_PREFERENCE",
+                    "R17/Q06/B/DIRECT_CLOTHING_PREFERENCE",
+                    "R17/Q10/H/DIRECT_FINAL_OUTFIT_PREFERENCE").contains(key);
+            default -> false;
+        };
+    }
+
+    // 충분성이 성립하고 승인된 우열·충돌이 없는 동등 후보만 S2 비복원 추첨에 전달한다.
+    public static List<String> reduceEquivalentValidatedCandidates(UUID sessionId, long revision,
+            Collection<String> candidates, String ruleVersion) {
+        if (sessionId == null || revision < 0 || ruleVersion == null || ruleVersion.isBlank()
+                || candidates == null || candidates.stream().anyMatch(id -> id == null || !id.matches("R(0[1-9]|1[0-9]|2[0-5])")))
+            throw new IllegalArgumentException("INVALID_REDUCTION_INPUT");
+        var ids = new ArrayList<>(candidates.stream().distinct().sorted().toList());
+        if (ids.size() <= 5) return List.copyOf(ids);
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            for (String field : List.of("TasteDNA-S2-SHA256-v1", sessionId.toString(), Long.toString(revision),
+                    ruleVersion, Integer.toString(ids.size()))) updateSelectionDigest(digest, field);
+            ids.forEach(id -> updateSelectionDigest(digest, id));
+            var random = new Random(ByteBuffer.wrap(digest.digest()).getLong());
+            // SHA-256 상위 64비트 → Java Random → Fisher-Yates 순서를 S2-v1 계약으로 고정한다.
+            for (int size = ids.size(); size > 1; size--) Collections.swap(ids, size - 1, random.nextInt(size));
+            return ids.subList(0, 5).stream().sorted().toList();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA256_UNAVAILABLE", e);
+        }
+    }
+
+    // 충분성 검증을 마친 후보만 호출자가 전달한다. 충분성 평가·축소 이후에만 호출한다.
     // UTF-8 길이 접두 인코딩과 SHA-256-v1을 고정하여 재조회·입력 순서에 따른 재추첨을 막는다.
     public static Optional<String> selectValidatedRepresentative(
             UUID sessionId, long submissionRevision, Collection<String> validatedCandidateIds, String ruleVersion) {

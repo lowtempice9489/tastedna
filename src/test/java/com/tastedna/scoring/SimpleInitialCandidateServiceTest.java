@@ -82,8 +82,8 @@ class SimpleInitialCandidateServiceTest {
         assertNull(result.simpleRepresentative());
         assertEquals("DEFERRED", result.decision().status());
         assertTrue(result.decision().results().isEmpty());
-        assertTrue(result.decision().missingRequirements().contains("CANDIDATE_DISCRIMINATION_RULE"));
-        assertTrue(result.decision().missingRequirements().contains("FINALIZATION_RULE"));
+        assertTrue(result.decision().missingRequirements().contains("CANDIDATE_SUFFICIENCY_RULE_REQUIRED"));
+
         assertEquals("INITIAL_CANDIDATES", result.status());
         assertEquals(definition, result.definitionId());
         for (var candidate : result.candidates()) {
@@ -171,7 +171,7 @@ class SimpleInitialCandidateServiceTest {
         assertFalse(service.find("member", id).decision().missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
         select(definition, "R01", "R02", "R03", "R04", "R05", "R06");
         assertEquals(6, service.find("member", id).candidates().size());
-        assertTrue(service.find("member", id).decision().missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
+        assertTrue(service.find("member", id).decision().missingRequirements().contains("CANDIDATE_SUFFICIENCY_RULE_REQUIRED"));
     }
     @Test void rejectsUnsubmittedAndOtherMembersBeforeReadingEvidence() {
         session(definition, "IN_PROGRESS");
@@ -254,9 +254,7 @@ class SimpleInitialCandidateServiceTest {
                 assertEquals(matches ? 2 : 1, supported.evidence().positive().size());
                 assertTrue(supported.evidence().unresolved().stream().noneMatch(o -> o.questionId().equals("Q09")));
                 assertTrue(response.candidates().stream().allMatch(c -> c.evidence().avoidanceOrConflict().isEmpty()));
-                assertEquals("DEFERRED", response.decision().status());
-                assertFalse(response.finalResult());
-                assertTrue(response.decision().results().isEmpty());
+                assertFinal(response, supportedId);
                 assertEquals(response, service.find("member", id));
             }
         }
@@ -276,8 +274,7 @@ class SimpleInitialCandidateServiceTest {
         assertEquals(List.of("R07"), updated.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
         assertEquals(4, updated.candidates().getFirst().evidence().positive().getFirst().answerRevision());
         assertNull(updated.simpleRepresentative());
-        assertEquals("DEFERRED", updated.decision().status());
-        assertFalse(updated.finalResult());
+        assertFinal(updated, "R07");
     }
 
     @Test void unmappedCatalogEntriesAreNotCandidatesAndCombinedOverflowIsPreserved() throws Exception {
@@ -292,14 +289,14 @@ class SimpleInitialCandidateServiceTest {
         when(observations.collectRaw("member", id.toString())).thenReturn(group(raw));
         var response = service.find("member", id);
         assertEquals(List.of("R02", "R03", "R04", "R05", "R07"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
-        assertEquals("DEFERRED", response.decision().status());
+        assertFinal(response, "R07");
         assertNull(response.simpleRepresentative());
         select(definition, "R02", "R03", "R04", "R05", "R06");
         raw.add(fact("Q02", "R06", "DIRECT_FASHION_LOOK_PREFERENCE", label("R06"), "EXPLICIT_SELECTION"));
         when(observations.collectRaw("member", id.toString())).thenReturn(group(raw));
         var expanded = service.find("member", id);
         assertEquals(List.of("R02", "R03", "R04", "R05", "R06", "R07"), expanded.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
-        assertTrue(expanded.decision().missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
+        assertFinal(expanded, "R07");
     }
 
     @Test void changedSelectionRejectsOldRevisionAndWomensComparisonIsNotMapped() throws Exception {
@@ -322,8 +319,7 @@ class SimpleInitialCandidateServiceTest {
         assertEquals(2, changed.candidates().getLast().evidence().positive().size());
         assertEquals(4, changed.candidates().getLast().evidence().positive().getLast().answerRevision());
         assertNull(changed.simpleRepresentative());
-        assertEquals("DEFERRED", changed.decision().status());
-        assertFalse(changed.finalResult());
+        assertFinal(changed, "R07");
 
         UUID womens = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
         when(sessions.get("member", id)).thenReturn(new SessionResponse(id, Mode.SIMPLE, ApparelScope.womens, "SUBMITTED", 10, womens, null));
@@ -375,8 +371,7 @@ class SimpleInitialCandidateServiceTest {
             assertTrue(candidate.evidence().unresolved().stream().noneMatch(o -> o.questionId().equals(rule.get(1))));
             assertTrue(candidate.evidence().avoidanceOrConflict().isEmpty());
             assertEquals("R03", response.simpleRepresentative().candidateId());
-            assertEquals("DEFERRED", response.decision().status());
-            assertFalse(response.finalResult());
+            assertFinal(response, rule.get(3));
             assertEquals(response, service.find("member", id));
 
             // 동일 옵션/Raw라도 다른 정의나 최신 revision이 아니면 진입하지 않는다.
@@ -413,7 +408,7 @@ class SimpleInitialCandidateServiceTest {
         assertTrue(service.find("member", id).candidates().isEmpty());
     }
 
-    @Test void realFourStyleAnswerPlusComparisonAndOutfitRequiresReductionPolicy() throws Exception {
+    @Test void realSixInitialCandidatesFinalizeOnlySufficientVisualCandidates() throws Exception {
         addCatalogCandidate("R16");
         select(definition, "R02", "R03", "R04", "R05");
         var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
@@ -423,10 +418,7 @@ class SimpleInitialCandidateServiceTest {
         when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
         var response = service.find("member", id);
         assertEquals(List.of("R02", "R03", "R04", "R05", "R07", "R16"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
-        assertTrue(response.decision().missingRequirements().contains("CANDIDATE_LIMIT_POLICY_REQUIRED"));
-        assertEquals("DEFERRED", response.decision().status());
-        assertFalse(response.finalResult());
-        assertTrue(response.decision().results().isEmpty());
+        assertFinal(response, "R07", "R16");
         assertNull(response.simpleRepresentative());
         var support = response.candidates().getLast().evidence().positive();
         assertEquals(1, support.size());
@@ -437,12 +429,52 @@ class SimpleInitialCandidateServiceTest {
         var review = SimpleCandidateDiscrimination.reviewInitialCandidates(response);
         assertEquals(response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList(),
                 review.candidates().stream().map(SimpleCandidateDiscrimination.CandidateReview::candidateId).toList());
-        assertTrue(review.validatedCandidateIds().isEmpty());
-        assertTrue(review.missingRequirements().contains("CANDIDATE_BOUNDARY_DISCRIMINATION_REQUIRED"));
+        assertEquals(List.of("R07", "R16"), review.validatedCandidateIds());
+        assertTrue(review.missingRequirements().isEmpty());
         assertEquals(Set.of("Q05"), review.candidates().getLast().supportingQuestions());
         Collections.reverse(facts);
         when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
         assertEquals(response, service.find("member", id));
+    }
+
+    @Test void actualMensThreeAndWomensTwoSufficientCandidatesAreStableAndSeparateFromQ02() throws Exception {
+        addCatalogCandidate("R13");
+        addCatalogCandidate("R16");
+        addCatalogCandidate("R17");
+        for (boolean womens : List.of(false, true)) {
+            reset(answers);
+            UUID def = womens ? UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52") : definition;
+            session(def, "SUBMITTED");
+            select(def, "R03");
+            var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
+            if (womens) {
+                facts.add(outfit(def, "Q05", "B", 3));
+                facts.add(outfit(def, "Q06", "B", 4));
+            } else {
+                facts.add(blackComparison("B", 3));
+                facts.add(outfit(def, "Q05", "B", 4));
+                facts.add(outfit(def, "Q10", "D", 5));
+            }
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+            var response = service.find("member", id);
+            assertFinal(response, womens ? new String[]{"R13", "R17"} : new String[]{"R07", "R13", "R16"});
+            assertEquals("R03", response.simpleRepresentative().candidateId());
+            Collections.reverse(facts);
+            when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
+            assertEquals(response, service.find("member", id));
+            var json = mapper.readTree(mapper.writeValueAsString(response));
+            assertEquals(response.decision().representativeCandidate(), json.path("decision").path("representativeCandidate").asString());
+            assertEquals("R03", json.path("simpleRepresentative").path("candidateId").asString());
+        }
+    }
+
+    void assertFinal(SimpleInitialCandidateService.Response response, String... allowed) {
+        assertTrue(response.finalResult());
+        assertEquals("FINAL", response.decision().status());
+        assertEquals(new TreeSet<>(List.of(allowed)), new TreeSet<>(response.decision().results().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList()));
+        assertTrue(List.of(allowed).contains(response.decision().representativeCandidate()));
+        assertEquals(SimpleCandidateDiscrimination.RULE_VERSION, response.decision().ruleVersion());
+        assertTrue(response.decision().missingRequirements().isEmpty());
     }
 
     void addCatalogCandidate(String candidateId) {
