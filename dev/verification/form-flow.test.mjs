@@ -373,3 +373,77 @@ test('report survives non-auth failures in optional requests', async () => {
   }
  }
 });
+
+
+test('actual male R22 and female R09 FINAL responses remain separate from Q02 R01 across report and history',async()=>{
+ for(const [scope,rep,ids,names] of [
+  ['mens','R22',['R07','R13','R22'],['Street','Graphic Street','Silhouette-led']],
+  ['womens','R09',['R09','R15'],['Romantic','Expressive Romantic']]
+ ]){
+  const {run,node,client,calls}=screen();
+  const saved={sessionId:'saved-'+scope,mode:'SIMPLE',apparelScope:scope,status:'SUBMITTED',definitionId:'def-'+scope,revision:10,submittedAt:'2026-11-10T00:00:00Z'};
+  const initial={...saved,finalResult:true,simpleRepresentative:{candidateId:'R01',candidateName:'Minimal',sources:[{optionLabel:'미니멀'}]},
+   decision:{status:'FINAL',representativeCandidate:rep,results:ids.map((id,i)=>({candidateId:id,candidateName:names[i],evidence:{status:id==='R22'?'SIMPLE_COMPOSITE_PREFERENCE_INFERENCE':'CANDIDATE_RELATIONS_PENDING',positive:[{questionId:'Q08',optionId:'C01:B',optionLabel:'비교 선택'}]}}))}};
+  client.request=async(path,body)=>{
+   calls.push([path,body]);
+   if(path==='/sessions/history')return [saved];
+   if(path.endsWith('/answers'))return {session:saved,answers:{}};
+   if(path.endsWith('/questions'))return {questions:[]};
+   if(path.endsWith('/preference-summary'))return {session:saved,title:'직접 선택 기록',description:'',evidence:[{questionId:'Q02',selections:[{optionId:'R01',label:'미니멀',images:[]}]},{questionId:'Q01',selections:[{optionId:'A',label:'블랙',images:[]}]}]};
+   if(path.endsWith('/initial-candidates'))return initial;
+   if(path.endsWith('/matched-demo-products'))return {products:[]};
+   throw new Error(path);
+  };
+  run("member={email:'a@example.test'}");
+  for(let revisit=0;revisit<2;revisit++){
+   run('session=null');await run('openMyPage()');
+   const dashboard=node('main').innerHTML;
+   assert.equal((dashboard.match(/종합 RESULT(?:<\/span>| ·)/g)||[]).length,3); // 최근 요약, 저장 목록, 최근 목록
+   assert.ok(dashboard.includes(rep+' · '+names[ids.indexOf(rep)]));
+   assert.match(dashboard,/R01 · Minimal/);
+   assert.doesNotMatch(dashboard,/종합 유형이 아닌 Q02/);
+   node('#mypage-saved-0').onclick();await settle();
+   const report=node('main').innerHTML;
+   assert.ok(report.includes('<h2>'+rep+' · '+names[ids.indexOf(rep)]+'</h2>'));
+   assert.match(report,/직접 선택한 스타일 · R01 · Minimal/);
+   assert.match(report,/블랙/);assert.match(report,/관측 근거/);
+   assert.doesNotMatch(report,/종합.*아직 확정하지 않습니다/);
+   assert.match(report,/<details class="report-history">/);
+   assert.ok(report.indexOf('id="report-products"')<report.indexOf('class="report-history"'));
+  }
+  assert.ok(calls.some(([p])=>p==='/sessions/'+saved.sessionId+'/matched-demo-products'));
+ }
+});
+
+test('FINAL requires matching session snapshot and a named representative inside decision results',async()=>{
+ for(const invalid of ['flag','status','missing','name','session','revision','definition']){
+  const {run,node,client}=screen();
+  const saved={sessionId:'saved',mode:'SIMPLE',status:'SUBMITTED',definitionId:'def',revision:3};
+  const initial={...saved,finalResult:true,decision:{status:'FINAL',representativeCandidate:'R22',results:[{candidateId:'R22',candidateName:'Silhouette-led'}]},simpleRepresentative:{sources:[{optionLabel:'미니멀'}]}};
+  if(invalid==='flag')initial.finalResult=false;
+  if(invalid==='status')initial.decision.status='DEFERRED';
+  if(invalid==='missing')initial.decision.representativeCandidate='R09';
+  if(invalid==='name')initial.decision.results[0].candidateName='';
+  if(invalid==='session')initial.sessionId='other';
+  if(invalid==='revision')initial.revision=2;
+  if(invalid==='definition')initial.definitionId='other';
+  client.request=async path=>path.endsWith('/preference-summary')?{session:saved,title:'직접 선호',description:'',evidence:[]}:path.endsWith('/initial-candidates')?initial:{products:[]};
+  run("session={sessionId:'saved'}");await run('result()');
+  assert.doesNotMatch(node('main').innerHTML,/종합 RESULT<|Silhouette-led/);
+  assert.match(node('main').innerHTML,/종합 유형은 아직 확정하지 않습니다/);
+ }
+});
+
+test('mypage FINAL lookup expiry clears member data while ordinary failure preserves history',async()=>{
+ for(const status of [401,500]){
+  const {run,node,client}=screen();
+  client.request=async path=>{
+   if(path==='/sessions/history')return [{sessionId:'saved',status:'SUBMITTED',apparelScope:'mens',submittedAt:'2026-11-10T00:00:00Z'}];
+   if(path.endsWith('/preference-summary'))return {evidence:[]};
+   throw Object.assign(new Error('lookup failed'),{status});
+  };
+  run("member={email:'a@example.test'}");await run('openMyPage()');
+  if(status===401){assert.equal(run('member'),null);assert.match(node('main').innerHTML,/FORM 로그인/);assert.doesNotMatch(node('main').innerHTML,/저장된 테스트 기록/);}
+  else {assert.match(node('main').innerHTML,/저장된 테스트 기록/);assert.doesNotMatch(node('main').innerHTML,/종합 RESULT/);}
+ }
+});

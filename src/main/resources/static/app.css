@@ -60,3 +60,10 @@
 .report-boundaries{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}.report-boundaries h3{font-size:16px;margin-bottom:8px}.report-boundaries p,.report-direction{font-size:13px;line-height:1.8}.report-direction{margin-top:16px;padding:14px;background:#edf0e5;border-radius:10px;color:#536044}
 .report-history{margin-top:24px;border:1px solid var(--line);border-radius:16px;background:#fffdf8}.report-history>summary{padding:22px;font-size:18px}.report-history>summary span{font-size:12px;color:#817565;margin-left:14px}.report-history-body{padding:0 22px 22px}.report-history-body>.result-card{margin-top:14px}
 @media(max-width:700px){.taste-report .result-heading{padding:22px}.taste-report .matched-products{padding:18px}.taste-report .matched-product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.taste-report .matched-product-card img{height:170px}.taste-report .matched-product-card>div{padding:10px}.report-history>summary span{display:block;margin:8px 0 0}.report-history-body{padding:0 14px 16px}}
+
+/* 여성복 비교 합본만 원본 비율로 표시하고 화면별 대안을 한 장씩 선택한다. */
+.overview-responsive summary{cursor:pointer;padding:12px 0;color:var(--green)}
+.overview-responsive picture{display:block}
+.overview-responsive picture img{display:block;width:100%;height:auto;max-height:none}
+.overview-responsive .zoom-button{position:static;margin-top:8px}
+.comprehensive-result{overflow-wrap:anywhere}

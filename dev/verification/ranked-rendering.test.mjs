@@ -194,3 +194,39 @@ test('Simple representative is separate from comprehensive result and optional',
   assert.match(html,/종합 유형은 아직 확정하지 않습니다/);
  }
 });
+
+test('all nine female comparison groups render one responsive overview without changing option cards or saved ranks',()=>{
+ const sql=readFileSync(new URL('../../src/main/resources/db/migration/V19__add_womens_simple_q08_q10.sql',import.meta.url),'utf8');
+ let count=0;
+ for(const line of sql.split(/\r?\n/).filter(l=>l.startsWith('INSERT INTO td_question_definition')&&/,'Q0[89]',/.test(l))){
+  const q=line.match(/,'(Q\d+)',/)[1],payload=JSON.parse(line.slice(line.indexOf(",'{")+2,line.lastIndexOf("','{}',TRUE)")));
+  const context=renderer();context.fixture=payload;context.q=q;
+  vm.runInContext("session={apparelScope:'womens'};questions=[{questionId:q,questionPayload:fixture}];answers[q]={selections:fixture.comparisons.map(g=>g.selectionMode==='RANKED_MULTI_SELECT'?{comparisonId:g.id,selectedOptionIds:['B','A']}:{comparisonId:g.id,selectedOptionId:'A'})};render()",context);
+  const before=vm.runInContext('JSON.stringify(answers)',context),html=vm.runInContext('main.innerHTML',context);
+  assert.equal((html.match(/<picture>/g)||[]).length,payload.comparisons.length);
+  assert.equal((html.match(/<details class="overview overview-responsive">/g)||[]).length,payload.comparisons.length);
+  assert.equal((html.match(/<input /g)||[]).length,payload.comparisons.reduce((n,g)=>n+g.options.length,0));
+  for(const g of payload.comparisons){
+   assert.ok(html.includes('src="'+encodeURI(g.overviewImages.find(u=>u.includes('_desktop')))+'"'));
+   assert.ok(html.includes('srcset="'+encodeURI(g.overviewImages.find(u=>u.includes('_mobile')))+'"'));
+   assert.ok(!html.includes('<img src="'+encodeURI(g.overviewImages.find(u=>u.includes('_mobile')))+'"'));
+  }
+  if(payload.comparisons.some(g=>g.selectionMode==='RANKED_MULTI_SELECT')){assert.match(html,/1위/);assert.match(html,/2위/);}
+  vm.runInContext('fixture.comparisons.forEach(g=>{g.overviewImages=[];g.options.forEach(o=>o.images=[])});render()',context);
+  assert.equal(vm.runInContext('JSON.stringify(answers)',context),before);
+  assert.equal((vm.runInContext('main.innerHTML',context).match(/<input /g)||[]).length,payload.comparisons.reduce((n,g)=>n+g.options.length,0));
+  count+=payload.comparisons.length;
+ }
+ assert.equal(count,9);
+ const css=readFileSync(new URL('../../src/main/resources/static/app.css',import.meta.url),'utf8');
+ assert.match(css,/\.overview-responsive picture img\{[^}]*height:auto;max-height:none/);
+});
+
+test('male overview keeps existing images and does not adopt female collapsed layout',()=>{
+ const context=renderer();
+ context.group={label:'비교',overviewImages:['/assets/gender/male/Q08/one.png','/assets/gender/male/Q08/two.png']};
+ vm.runInContext("session={apparelScope:'mens'}",context);
+ const html=vm.runInContext("overviewMarkup(group,{questionId:'Q08'})",context);
+ assert.equal((html.match(/<img /g)||[]).length,2);
+ assert.doesNotMatch(html,/<details|<picture/);
+});
