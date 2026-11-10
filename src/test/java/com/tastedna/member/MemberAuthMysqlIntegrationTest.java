@@ -1,4 +1,5 @@
 package com.tastedna.member;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +10,7 @@ import com.tastedna.member.domain.FormMember;
 import com.tastedna.member.persistence.FormMemberRepository;
 import com.tastedna.session.persistence.*;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -54,7 +56,7 @@ class MemberAuthMysqlIntegrationTest {
     @Test
     @Transactional
     void demoCatalogV25HasExpectedStyleCoverage() {
-        assertEquals("25", flyway.info().current().getVersion().getVersion());
+        assertLatestMigrationApplied();
         assertTrue(flyway.validateWithResult().validationSuccessful);
         var catalog = demoProducts.findAllByOrderByDisplayOrderAsc();
         assertEquals(100, catalog.size());
@@ -163,12 +165,25 @@ class MemberAuthMysqlIntegrationTest {
         }
     }
 
-    @Test void flywayAndJpaSchemaValidationReachV25() {
-        assertEquals("25", flyway.info().current().getVersion().getVersion());
-        assertEquals(25, flyway.info().applied().length);
+    @Test void flywayAndJpaSchemaValidationReachLatestMigration() {
+        assertLatestMigrationApplied();
         assertTrue(flyway.validateWithResult().validationSuccessful);
         // EntityManagerFactory 기동 시 전체 매핑 validate가 실행되며 이 조회도 실제 JPA를 사용한다.
         assertNotNull(members.findByEmail("missing-" + UUID.randomUUID() + "@example.test"));
+    }
+
+    private void assertLatestMigrationApplied() {
+        try (var files = Files.list(Path.of("src/main/resources/db/migration"))) {
+            var versions = files.map(path -> path.getFileName().toString())
+                    .filter(name -> name.matches("V[0-9]+__.*\\.sql"))
+                    .map(name -> MigrationVersion.fromVersion(name.substring(1, name.indexOf("__"))))
+                    .sorted().toList();
+            assertEquals(versions.getLast(), flyway.info().current().getVersion());
+            assertEquals(versions.size(), flyway.info().applied().length);
+            assertEquals(0, flyway.info().pending().length);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot read migration versions", exception);
+        }
     }
 
     private Browser csrfToken(MockHttpSession session) throws Exception {
