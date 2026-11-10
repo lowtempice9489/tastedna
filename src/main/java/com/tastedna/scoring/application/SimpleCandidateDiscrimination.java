@@ -20,7 +20,7 @@ public record SimpleCandidateDiscrimination(
         String reason
 ) {
 
-    public static final String RULE_VERSION = "simple-B-v3-ranked09C/S2-SHA256-v1/representative-SHA256-v1";
+    public static final String RULE_VERSION = "simple-B-v4-composite10B/S2-SHA256-v1/representative-SHA256-v1";
 
     public static final String INSUFFICIENT_EVIDENCE =
             "INSUFFICIENT_DISCRIMINATING_EVIDENCE";
@@ -53,7 +53,8 @@ public record SimpleCandidateDiscrimination(
             if (positive.isEmpty()) missing.add("NO_APPROVED_POSITIVE_EVIDENCE");
             if (!conflicts.isEmpty()) missing.add("CONFLICT_RESOLUTION_RULE_REQUIRED");
             if (!unresolved.isEmpty()) missing.add("UNRESOLVED_OBSERVATION_RELATIONS");
-            boolean sufficient = additional.stream().anyMatch(s -> sufficientVisual(initial.definitionId(), candidate.candidateId(), s));
+            boolean sufficient = additional.stream().anyMatch(s -> sufficientVisual(initial.definitionId(), candidate.candidateId(), s))
+                    || sufficientComposite(initial.definitionId(), candidate.candidateId(), positive);
             if (!sufficient) missing.add("CANDIDATE_SUFFICIENCY_RULE_REQUIRED");
             if (sufficient && conflicts.isEmpty()) validated.add(candidate.candidateId());
             reviews.add(new CandidateReview(candidate.candidateId(), direct, additional,
@@ -67,6 +68,100 @@ public record SimpleCandidateDiscrimination(
         }
         return new CandidatePoolReview(initial.sessionId(), initial.definitionId(), initial.revision(),
                 List.copyOf(reviews), List.copyOf(validated), List.copyOf(missing));
+    }
+
+    // 복합 조건은 실제 선호의 공존에 관한 Simple 해석이며 직접 혼합 착장이나 속성 주도성의 증명이 아니다.
+    private record CompositeRule(List<String> entry, List<List<String>> alternatives) {
+        boolean enters(Set<String> keys) { return keys.containsAll(entry); }
+        boolean sufficient(Set<String> keys) {
+            return enters(keys) && alternatives.stream().anyMatch(keys::containsAll);
+        }
+    }
+
+    private static CompositeRule composite(String entry, String... alternatives) {
+        return new CompositeRule(List.of(entry.split(" ")),
+                Arrays.stream(alternatives).map(a -> List.of(a.split(" "))).toList());
+    }
+
+    private static Map<String, CompositeRule> compositeRules(UUID definition) {
+        boolean mens = "33333333-3333-4333-8333-333333333333".equals(definition.toString());
+        if (!mens && !"6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definition.toString())) return Map.of();
+        String[] vintage = mens ? new String[]{"Q05/D", "Q10/E"} : new String[]{"Q05/E", "Q06/F"};
+        var rules = new LinkedHashMap<String, CompositeRule>();
+        rules.put("R02", composite("Q02/R02", "Q04/P01 Q03/S05"));
+        rules.put("R06", composite("Q02/R06", mens ? new String[]{"Q05/C"} : new String[]{"Q06/B", "Q10/H"}));
+        rules.put("R08", composite("Q02/R08", vintage));
+        rules.put("R10", composite("Q02/R10", "Q04/P06 Q03/S06"));
+        rules.put("R11", composite("Q02/R11", mens ? "Q10/G" : "Q10/F"));
+        rules.put("R12", composite("Q02/R12", mens ? "Q09/C01:B" : "Q10/P"));
+        rules.put("R14", composite("Q02/R08", "Q04/P03"));
+        rules.put("R18", composite("Q02/R01 Q02/R07", "Q04/P01"));
+        rules.put("R19", composite("Q02/R08 Q02/R05", vintage));
+        rules.put("R20", composite("Q02/R09 Q02/R11", "Q04/P06"));
+        if (!mens) rules.put("R21", composite("Q01/O", "Q09/C04:B"));
+        rules.put("R22", composite("Q03/S04", "Q08/C01:B"));
+        rules.put("R23", composite("Q04/P03", "Q09/C02:A"));
+        rules.put("R24", composite("Q02/R08 Q02/R11", vintage));
+        rules.put("R25", composite("Q02/R03 Q02/R07", "Q04/P03"));
+        return rules;
+    }
+
+    static Set<String> compositeObservationKeys(UUID definition) {
+        var keys = new HashSet<String>();
+        compositeRules(definition).values().forEach(r -> {
+            keys.addAll(r.entry());
+            r.alternatives().forEach(keys::addAll);
+        });
+        return keys;
+    }
+
+    static String compositeObservationType(UUID definition, String question) {
+        return switch (question) {
+            case "Q01" -> "DIRECT_COLOR_PREFERENCE";
+            case "Q02" -> "DIRECT_FASHION_LOOK_PREFERENCE";
+            case "Q03" -> "DIRECT_SILHOUETTE_PREFERENCE";
+            case "Q04" -> "DIRECT_PATTERN_GRAPHIC_PREFERENCE";
+            case "Q05" -> "DIRECT_OUTFIT_PREFERENCE";
+            case "Q06" -> "DIRECT_CLOTHING_PREFERENCE";
+            case "Q08" -> "DIRECT_COMPARISON_PREFERENCE";
+            case "Q09" -> "33333333-3333-4333-8333-333333333333".equals(definition.toString())
+                    ? "DIRECT_COMBINATION_PREFERENCE" : "DIRECT_COMPARISON_PREFERENCE";
+            case "Q10" -> "DIRECT_FINAL_OUTFIT_PREFERENCE";
+            default -> "";
+        };
+    }
+
+    private static Set<String> compositeKeys(UUID definition, List<Source> sources) {
+        var keys = new HashSet<String>();
+        for (var source : sources) {
+            boolean ranked = "6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definition.toString())
+                    && "Q09".equals(source.questionId()) && "C02:A".equals(source.optionId());
+            boolean valid = ranked
+                    ? "RANKED_COMPARISON_PREFERENCE".equals(source.observationType())
+                        && "EXPLICIT_RANKED_SELECTION".equals(source.evidenceType()) && Integer.valueOf(1).equals(source.rank())
+                    : compositeObservationType(definition, source.questionId()).equals(source.observationType())
+                        && "EXPLICIT_SELECTION".equals(source.evidenceType()) && source.rank() == null;
+            if (valid) keys.add(source.questionId() + "/" + source.optionId());
+        }
+        return keys;
+    }
+
+    static Map<String, List<Source>> compositeSupport(UUID definition, List<Source> sources) {
+        var keys = compositeKeys(definition, sources);
+        var support = new LinkedHashMap<String, List<Source>>();
+        compositeRules(definition).forEach((id, rule) -> {
+            if (!rule.enters(keys)) return;
+            var relevant = new HashSet<>(rule.entry());
+            rule.alternatives().forEach(relevant::addAll);
+            support.put(id, sources.stream().filter(s -> relevant.contains(s.questionId() + "/" + s.optionId())
+                    && keys.contains(s.questionId() + "/" + s.optionId())).distinct().toList());
+        });
+        return support;
+    }
+
+    static boolean sufficientComposite(UUID definition, String candidate, List<Source> sources) {
+        var rule = compositeRules(definition).get(candidate);
+        return rule != null && rule.sufficient(compositeKeys(definition, sources));
     }
 
     // 출처·이미지·최신 답변 검사를 통과한 긍정 근거에만 승인된 B 정책을 적용한다.

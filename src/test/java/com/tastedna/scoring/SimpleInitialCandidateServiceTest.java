@@ -12,9 +12,18 @@ import com.tastedna.session.api.dto.*;
 import com.tastedna.session.domain.*;
 import com.tastedna.session.persistence.SessionAnswerRepository;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import com.tastedna.scoring.domain.OptionScoringRule;
+import com.tastedna.session.persistence.TestSessionRepository;
+import com.tastedna.session.application.multi.MultiChoiceAnswerValidator;
+import com.tastedna.session.application.single.SingleChoiceAnswerValidator;
+import com.tastedna.session.application.comparison.ComparisonAnswerValidator;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.json.JsonMapper;
 import java.nio.file.*;
 import java.time.*;
@@ -539,13 +548,13 @@ class SimpleInitialCandidateServiceTest {
         assertEquals(six, service.find("member", id));
     }
 
-    @Test void ambiguousCoreVisualsAndQ02AloneRemainDeferred() throws Exception {
+    @Test void ambiguousCoreVisualsWithoutCorrespondingDirectPreferenceRemainDeferred() throws Exception {
         UUID def = UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
         session(def, "SUBMITTED");
         for (var pair : List.of(List.of("B", "R02"), List.of("E", "R03"), List.of("L", "R08"),
                 List.of("M", "R10"), List.of("F", "R11"), List.of("P", "R12"))) {
             reset(answers);
-            select(def, pair.get(1));
+            select(def, "R02");
             var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
             facts.add(outfit(def, "Q10", pair.getFirst(), 3));
             when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
@@ -617,24 +626,233 @@ class SimpleInitialCandidateServiceTest {
         assertEquals("DEFERRED", service.find("member", id).decision().status());
     }
 
-    @Test void checkedDenimOutfitsDoNotInventVintageVariantsOrMixedCandidates() throws Exception {
+    @Test void checkedDenimOutfitsWithoutVintagePreferenceDoNotInventVintageCandidates() throws Exception {
         addCatalogCandidate("R14");
         addCatalogCandidate("R19");
         for (boolean womens : List.of(false, true)) {
             reset(answers);
             UUID def = womens ? UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52") : definition;
             session(def, "SUBMITTED");
-            select(def, "R08");
+            select(def, "R03");
             var facts = new ArrayList<>(observations.collectRaw("member", id.toString()).get("DIRECT_FASHION_LOOK_PREFERENCE"));
             facts.add(outfit(def, "Q05", womens ? "E" : "D", 3));
             facts.add(outfit(def, womens ? "Q06" : "Q10", womens ? "F" : "E", 4));
             when(observations.collectRaw("member", id.toString())).thenReturn(group(facts));
             var response = service.find("member", id);
-            assertEquals(List.of("R08"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
+            assertEquals(List.of("R03"), response.candidates().stream().map(SimpleInitialCandidateService.Candidate::candidateId).toList());
             assertEquals("DEFERRED", response.decision().status());
             assertFalse(response.finalResult());
             assertTrue(response.decision().results().isEmpty());
         }
+    }
+
+    @ParameterizedTest(name = "{0} {1}: {2}")
+    @CsvSource({
+        "M,R02,Q02/R02 Q04/P01 Q03/S05", "W,R02,Q02/R02 Q04/P01 Q03/S05",
+        "M,R06,Q02/R06 Q05/C", "W,R06,Q02/R06 Q06/B", "W,R06,Q02/R06 Q10/H",
+        "M,R08,Q02/R08 Q05/D", "M,R08,Q02/R08 Q10/E", "W,R08,Q02/R08 Q05/E", "W,R08,Q02/R08 Q06/F",
+        "M,R10,Q02/R10 Q04/P06 Q03/S06", "W,R10,Q02/R10 Q04/P06 Q03/S06",
+        "M,R11,Q02/R11 Q10/G", "W,R11,Q02/R11 Q10/F",
+        "M,R12,Q02/R12 Q09/C01:B", "W,R12,Q02/R12 Q10/P",
+        "M,R14,Q02/R08 Q04/P03", "W,R14,Q02/R08 Q04/P03",
+        "M,R18,Q02/R01 Q02/R07 Q04/P01", "W,R18,Q02/R01 Q02/R07 Q04/P01",
+        "M,R19,Q02/R08 Q02/R05 Q05/D", "W,R19,Q02/R08 Q02/R05 Q05/E",
+        "M,R20,Q02/R09 Q02/R11 Q04/P06", "W,R20,Q02/R09 Q02/R11 Q04/P06",
+        "W,R21,Q01/O Q09/C04:B",
+        "M,R22,Q03/S04 Q08/C01:B", "W,R22,Q03/S04 Q08/C01:B",
+        "M,R23,Q04/P03 Q09/C02:A", "W,R23,Q04/P03 Q09/C02:A",
+        "M,R24,Q02/R08 Q02/R11 Q05/D", "W,R24,Q02/R08 Q02/R11 Q05/E",
+        "M,R25,Q02/R03 Q02/R07 Q04/P03", "W,R25,Q02/R03 Q02/R07 Q04/P03"
+    })
+    void compositeRulesReachFinalFromRealStoredAnswersAndNeedEveryConjunct(String scope, String candidate, String choices) throws Exception {
+        var realService = storedScenario(scope, choices);
+        var response = realService.find("member", id);
+        assertTrue(SimpleCandidateDiscrimination.reviewInitialCandidates(response).validatedCandidateIds().contains(candidate));
+        assertTrue(response.decision().results().stream().anyMatch(c -> c.candidateId().equals(candidate)));
+        var result = response.candidates().stream().filter(c -> c.candidateId().equals(candidate)).findFirst().orElseThrow();
+        assertEquals("SIMPLE_COMPOSITE_PREFERENCE_INFERENCE", result.evidence().status());
+        assertEquals(result.evidence().positive().size(), new HashSet<>(result.evidence().positive()).size());
+        assertEquals(response, realService.find("member", id));
+        for (String omitted : choices.split(" ")) {
+            var reduced = new ArrayList<>(List.of(choices.split(" ")));
+            reduced.remove(omitted);
+            // 같은 질문의 다른 필수 선택은 보존하고, 빠진 단독 선택은 유효한 중립 대조 옵션으로 교체한다.
+            String group = omitted.contains(":") ? omitted.substring(0, omitted.indexOf(':')) : omitted.split("/")[0];
+            if (reduced.stream().noneMatch(c -> c.startsWith(group + (omitted.contains(":") ? ":" : "/"))))
+                reduced.add(neutralChoice(scope, omitted));
+            var missing = storedScenario(scope, String.join(" ", reduced)).find("member", id);
+            assertFalse(SimpleCandidateDiscrimination.reviewInitialCandidates(missing).validatedCandidateIds().contains(candidate),
+                    candidate + " missing " + omitted);
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "M,R01,Q09/C03:A", "M,R07,Q09/C03:B", "M,R03,Q10/J", "M,R05,Q10/A",
+        "M,R13,Q10/D", "M,R16,Q05/B", "M,R17,Q05/C",
+        "W,R04,Q10/I", "W,R05,Q10/A", "W,R09,Q05/C", "W,R13,Q05/B",
+        "W,R15,Q08/C05:D", "W,R17,Q06/B"
+    })
+    void existingTenVisualFinalsStillReachFromActualStoredAnswers(String scope, String candidate, String choices) throws Exception {
+        var response = storedScenario(scope, choices).find("member", id);
+        assertTrue(response.decision().results().stream().anyMatch(c -> c.candidateId().equals(candidate)));
+        assertNotEquals("SIMPLE_COMPOSITE_PREFERENCE_INFERENCE", response.candidates().stream()
+                .filter(c -> c.candidateId().equals(candidate)).findFirst().orElseThrow().evidence().status());
+    }
+
+    @Test void compositePoolReductionUsesAllSevenCandidatesAndIsRepeatable() throws Exception {
+        var real = storedScenario("M", "Q02/R08 Q02/R05 Q02/R11 Q02/R07 Q04/P03 Q05/D Q08/C01:B Q09/C02:A Q09/C03:A Q10/D");
+        var response = real.find("member", id);
+        assertEquals(List.of("R01", "R08", "R13", "R14", "R19", "R23", "R24"),
+                SimpleCandidateDiscrimination.reviewInitialCandidates(response).validatedCandidateIds());
+        assertEquals(5, response.decision().results().size());
+        assertTrue(response.candidates().size() > 5);
+        assertNull(response.simpleRepresentative());
+        Collections.reverse(scenarioAnswers);
+        assertEquals(response, real.find("member", id));
+        assertTrue(response.decision().results().stream().anyMatch(c -> c.candidateId().equals(response.decision().representativeCandidate())));
+    }
+
+    @Test void compositeStoredRevisionImageAndRankBoundaries() throws Exception {
+        var real = storedScenario("W", "Q04/P03 Q09/C02:A");
+        assertTrue(SimpleCandidateDiscrimination.reviewInitialCandidates(real.find("member", id)).validatedCandidateIds().contains("R23"));
+        var answer = answers.findById(new SessionAnswerId(id.toString(), "Q09")).orElseThrow();
+        // 저장 답변과 이전 Raw revision을 분리해 오래된 근거의 재사용을 막는다.
+        when(answers.findById(answer.getId())).thenReturn(Optional.of(new SessionAnswer(id.toString(), "Q09",
+                answer.getAnswerPayload(), answer.getPresentedPayload(), 99, LocalDateTime.now())));
+        assertFalse(SimpleCandidateDiscrimination.reviewInitialCandidates(real.find("member", id)).validatedCandidateIds().contains("R23"));
+        when(answers.findById(answer.getId())).thenReturn(Optional.of(new SessionAnswer(id.toString(), "Q09",
+                answer.getAnswerPayload(), answer.getPresentedPayload().replace("/Q09/C02/A.png", "/Q09/C02/B.png"),
+                answer.getAnswerRevision(), LocalDateTime.now())));
+        assertFalse(SimpleCandidateDiscrimination.reviewInitialCandidates(real.find("member", id)).validatedCandidateIds().contains("R23"));
+        var changedPayload = mapper.readTree(answer.getAnswerPayload());
+        for (var row : changedPayload.path("selections")) if ("C02".equals(row.path("comparisonId").asString()))
+            ((ObjectNode) row).set("selectedOptionIds", mapper.valueToTree(List.of("B", "A")));
+        var changed = new SessionAnswer(id.toString(), "Q09", changedPayload.toString(), answer.getPresentedPayload(), 10, LocalDateTime.now());
+        scenarioAnswers.removeIf(a -> a.getId().equals(answer.getId()));
+        scenarioAnswers.add(changed);
+        when(answers.findById(answer.getId())).thenReturn(Optional.of(changed));
+        assertFalse(SimpleCandidateDiscrimination.reviewInitialCandidates(real.find("member", id)).validatedCandidateIds().contains("R23"));
+        var lowerRank = storedScenario("W", "Q04/P03 Q09/C02:B Q09/C02:A").find("member", id);
+        assertFalse(SimpleCandidateDiscrimination.reviewInitialCandidates(lowerRank).validatedCandidateIds().contains("R23"));
+        var noQ02Relation = storedScenario("W", "Q01/O Q09/C04:B").find("member", id);
+        assertEquals("R03", noQ02Relation.simpleRepresentative().candidateId());
+        assertTrue(noQ02Relation.decision().results().stream().anyMatch(c -> c.candidateId().equals("R21")));
+        var mens = storedScenario("M", "Q01/O Q09/C01:B").find("member", id);
+        assertFalse(mens.candidates().stream().anyMatch(c -> c.candidateId().equals("R21")));
+    }
+
+    final List<SessionAnswer> scenarioAnswers = new ArrayList<>();
+
+    String neutralChoice(String scope, String choice) {
+        String q = choice.substring(0, 3);
+        if (choice.contains(":")) return choice.substring(0, choice.indexOf(':') + 1)
+                + (choice.endsWith(":A") ? "B" : "A");
+        return q + "/" + switch (q) {
+            case "Q01" -> "A";
+            case "Q02" -> choice.endsWith("/R12") ? "R02" : "R12";
+            case "Q03" -> "S02";
+            case "Q04" -> "P02";
+            case "Q05", "Q06" -> "A";
+            default -> scope.equals("M") ? "B" : "O";
+        };
+    }
+
+    SimpleInitialCandidateService storedScenario(String scope, String choices) throws Exception {
+        reset(answers);
+        scenarioAnswers.clear();
+        UUID def = scope.equals("M") ? definition : UUID.fromString("6acc799d-1348-4f34-b756-593e9f5bfd52");
+        session(def, "SUBMITTED");
+        for (int i = 13; i <= 25; i++) addCatalogCandidate("R%02d".formatted(i));
+        var definitions = new TreeMap<String, JsonNode>();
+        var rules = new HashMap<String, OptionScoringRule>();
+        var migrations = new ArrayList<>(List.of("V13__add_mens_image_simple_definition.sql"));
+        if (scope.equals("W")) migrations.addAll(List.of("V18__add_womens_simple_q05_q07.sql", "V19__add_womens_simple_q08_q10.sql"));
+        for (String file : migrations) for (String line : Files.readAllLines(Path.of("src/main/resources/db/migration", file))) {
+            var match = Pattern.compile("'(Q[0-9]{2})',").matcher(line);
+            if (!match.find()) continue;
+            String q = match.group(1);
+            if (line.startsWith("INSERT INTO td_question_definition"))
+                definitions.put(q, mapper.readTree(line.substring(line.indexOf("'{") + 1, line.indexOf("}','") + 1)));
+            if (line.startsWith("INSERT INTO td_option_scoring_rule")) {
+                var option = Pattern.compile("'" + q + "','([^']+)'").matcher(line);
+                assertTrue(option.find());
+                var rule = mock(OptionScoringRule.class);
+                when(rule.getObservationPayload()).thenReturn(line.substring(line.lastIndexOf("'{") + 1, line.lastIndexOf("');")));
+                rules.put(q + "/" + option.group(1), rule);
+            }
+        }
+        assertEquals(10, definitions.size());
+        var selected = new LinkedHashMap<String, List<String>>();
+        for (String token : choices.split(" ")) if (!token.isBlank()) {
+            String[] pair = token.split("/");
+            String group = pair[1].contains(":") ? pair[0] + "/" + pair[1].split(":")[0] : pair[0];
+            String option = pair[1].contains(":") ? pair[1].split(":")[1] : pair[1];
+            selected.computeIfAbsent(group, ignored -> new ArrayList<>()).add(option);
+        }
+        for (var entry : definitions.entrySet()) {
+            String q = entry.getKey();
+            var node = entry.getValue();
+            var current = mock(QuestionDefinition.class);
+            when(current.getQuestionPayload()).thenReturn(node.toString());
+            when(questions.findByIdDefinitionIdAndIdQuestionId(def.toString(), q)).thenReturn(Optional.of(current));
+            Object payload;
+            if ("COMPARISON".equals(node.path("kind").asString())) {
+                var rows = new ArrayList<Map<String, Object>>();
+                for (var group : node.path("comparisons")) {
+                    String g = group.path("id").asString();
+                    if (g.equals("C02_POCKETS")) continue;
+                    String fallback = q.equals("Q09") && g.equals("C02") ? "B" : "A";
+                    var options = selected.getOrDefault(q + "/" + g, List.of(fallback));
+                    rows.add(Map.of("comparisonId", g,
+                            "RANKED_MULTI_SELECT".equals(group.path("selectionMode").asString()) ? "selectedOptionIds" : "selectedOptionId",
+                            "RANKED_MULTI_SELECT".equals(group.path("selectionMode").asString()) ? options : options.getFirst()));
+                }
+                payload = Map.of("selections", rows);
+            } else {
+                String fallback = switch (q) {
+                    case "Q02" -> "R03";
+                    case "Q03" -> "S02";
+                    case "Q04" -> "P02";
+                    case "Q07" -> "NONE";
+                    case "Q10" -> scope.equals("M") ? "B" : "O";
+                    default -> "A";
+                };
+                var options = selected.getOrDefault(q, List.of(fallback));
+                payload = "MULTIPLE_CHOICE".equals(node.path("kind").asString())
+                        ? Map.of("selectedOptionIds", options) : Map.of("selectedOptionId", options.getFirst());
+            }
+            var json = mapper.valueToTree(payload);
+            switch (node.path("kind").asString()) {
+                case "MULTIPLE_CHOICE" -> MultiChoiceAnswerValidator.validate(node.toString(), json, mapper);
+                case "SINGLE_CHOICE" -> SingleChoiceAnswerValidator.validate(node.toString(), json, mapper);
+                case "COMPARISON" -> ComparisonAnswerValidator.validate(node.toString(), json, mapper);
+                default -> fail("Unknown actual question kind");
+            }
+            var stored = new SessionAnswer(id.toString(), q, json.toString(), node.toString(), Integer.parseInt(q.substring(1)), LocalDateTime.now());
+            scenarioAnswers.add(stored);
+            when(answers.findById(stored.getId())).thenReturn(Optional.of(stored));
+        }
+        when(answers.findByIdSessionIdOrderByIdQuestionIdAsc(id.toString())).thenAnswer(inv -> new ArrayList<>(scenarioAnswers));
+        var repository = mock(TestSessionRepository.class);
+        var storedSession = mock(TestSession.class);
+        when(storedSession.getDefinitionId()).thenReturn(def.toString());
+        when(storedSession.getQuestionOrder()).thenReturn(mapper.writeValueAsString(definitions.keySet()));
+        when(repository.findBySessionIdAndMallMemberId(id.toString(), "member")).thenReturn(Optional.of(storedSession));
+        var resolver = mock(SelectedOptionRuleResolver.class);
+        when(resolver.resolve(eq(def.toString()), anyString(), anyList())).thenAnswer(inv -> {
+            String q = inv.getArgument(1);
+            List<String> options = inv.getArgument(2);
+            var resolved = new HashMap<String, OptionScoringRule>();
+            for (String o : options) {
+                assertNotNull(rules.get(q + "/" + o), q + "/" + o);
+                resolved.put(o, rules.get(q + "/" + o));
+            }
+            return resolved;
+        });
+        var raw = new SessionObservationService(answers, repository, new DirectObservationCollector(resolver), mapper);
+        var direct = new StyleCoreCandidateService(raw, mapper, mappings, null, null, null, null);
+        return new SimpleInitialCandidateService(sessions, answers, questions, direct, catalog, mapper, raw);
     }
 
     RawObservationAggregator.RawObservation rankedRomantic(long revision, String... ordered) throws Exception {

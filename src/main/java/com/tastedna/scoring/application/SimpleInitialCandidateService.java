@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.JsonNode;
 import java.util.*;
 
 @Service
@@ -84,6 +85,10 @@ public class SimpleInitialCandidateService {
         addOutfitEntrySupport(sessionId, session.definitionId().toString(), facts, additionalSources);
         var rankedSupport = womensExpressiveRomanticSupport(sessionId, session.definitionId().toString(), facts);
         if (!rankedSupport.isEmpty()) additionalSources.put("R15", rankedSupport);
+        var compositeFacts = new ArrayList<>(directSources.values().stream().flatMap(Collection::stream).toList());
+        compositeFacts.addAll(compositeObservationSources(sessionId, session.definitionId(), facts));
+        SimpleCandidateDiscrimination.compositeSupport(session.definitionId(), compositeFacts).forEach((candidate, sources) ->
+                additionalSources.computeIfAbsent(candidate, ignored -> new ArrayList<>()).addAll(sources));
         // 승인된 진입 관계의 합집합만 조회한다. 카탈로그 등록이나 후보 그룹 자체는 진입 근거가 아니다.
         Set<String> candidateIds = new HashSet<>(directSources.keySet());
         candidateIds.addAll(additionalSources.keySet());
@@ -102,7 +107,9 @@ public class SimpleInitialCandidateService {
                             && s.answerRevision() == f.answerRevision()
                             && (s.rank() == null ? s.optionLabel().equals(f.observedValue()) : s.rank().equals(f.rank())))).toList();
             result.add(new Candidate(candidateId, definition.get().getCandidateName(), sources,
-                    new CandidateEvidence(List.copyOf(positive), List.of(), unresolved, "CANDIDATE_RELATIONS_PENDING")));
+                    new CandidateEvidence(positive.stream().distinct().toList(), List.of(), unresolved,
+                            SimpleCandidateDiscrimination.sufficientComposite(session.definitionId(), candidateId, positive)
+                                    ? "SIMPLE_COMPOSITE_PREFERENCE_INFERENCE" : "CANDIDATE_RELATIONS_PENDING")));
         }
         result.sort(Comparator.comparing(Candidate::candidateId));
         var selected = answer.map(a -> MultiChoiceAnswerPayloadExtractor.extract(mapper.readTree(a.getAnswerPayload())))
@@ -125,6 +132,77 @@ public class SimpleInitialCandidateService {
         return new Response(sessionId, session.definitionId(), session.revision(), "INITIAL_CANDIDATES", !finalResults.isEmpty(),
                 initial.candidates(), new Decision(finalResults.isEmpty() ? "DEFERRED" : "FINAL", finalResults, List.copyOf(missing),
                         selectedResult.orElse(null), SimpleCandidateDiscrimination.RULE_VERSION), representative);
+    }
+
+    // 저장 선택·현재 정의·Raw revision을 함께 확인해 복합 해석에도 실제 관측만 전달한다.
+    private List<Source> compositeObservationSources(UUID sessionId, UUID definition, List<Observation> facts) {
+        var keys = SimpleCandidateDiscrimination.compositeObservationKeys(definition);
+        var result = new ArrayList<Source>();
+        for (String q : facts.stream().map(Observation::questionId).distinct().sorted().toList()) {
+            if ("Q02".equals(q) || keys.stream().noneMatch(k -> k.startsWith(q + "/"))) continue;
+            var answer = answers.findById(new SessionAnswerId(sessionId.toString(), q));
+            var current = questions.findByIdDefinitionIdAndIdQuestionId(definition.toString(), q);
+            if (answer.isEmpty() || current.isEmpty()) continue;
+            var stored = answer.get();
+            var presented = mapper.readTree(stored.getPresentedPayload());
+            var approved = mapper.readTree(current.get().getQuestionPayload());
+            if (!presented.path("kind").equals(approved.path("kind"))) continue;
+            var payload = mapper.readTree(stored.getAnswerPayload());
+            for (var fact : facts) {
+                if (!q.equals(fact.questionId()) || !definition.toString().equals(fact.definitionId())
+                        || stored.getAnswerRevision() != fact.answerRevision() || !keys.contains(q + "/" + fact.optionId())) continue;
+                JsonNode option;
+                JsonNode expected;
+                Integer rank = null;
+                String type = SimpleCandidateDiscrimination.compositeObservationType(definition, q);
+                String evidence = "EXPLICIT_SELECTION";
+                if ("COMPARISON".equals(presented.path("kind").asString())) {
+                    String[] parts = fact.optionId().split(":");
+                    if (parts.length != 2) continue;
+                    var group = nodeWithId(presented.path("comparisons"), parts[0]);
+                    var approvedGroup = nodeWithId(approved.path("comparisons"), parts[0]);
+                    if (group == null || approvedGroup == null
+                            || !group.path("selectionMode").equals(approvedGroup.path("selectionMode"))
+                            || !group.path("overviewImages").equals(approvedGroup.path("overviewImages"))) continue;
+                    var selected = ComparisonAnswerPayloadExtractor.extractSelections(payload).get(parts[0]);
+                    if (selected == null || !selected.optionIds().contains(parts[1])) continue;
+                    boolean ranked = "RANKED_MULTI_SELECT".equals(approvedGroup.path("selectionMode").asString());
+                    if (ranked != selected.ranked() || (!ranked && selected.optionIds().size() != 1)) continue;
+                    if (ranked) {
+                        rank = selected.optionIds().indexOf(parts[1]) + 1;
+                        if (rank != 1 || !rank.equals(fact.rank()) || !rank.toString().equals(fact.observedValue())) continue;
+                        type = "RANKED_COMPARISON_PREFERENCE";
+                        evidence = "EXPLICIT_RANKED_SELECTION";
+                    }
+                    option = nodeWithId(group.path("options"), parts[1]);
+                    expected = nodeWithId(approvedGroup.path("options"), parts[1]);
+                } else {
+                    boolean selected = switch (presented.path("kind").asString()) {
+                        case "MULTIPLE_CHOICE" -> MultiChoiceAnswerPayloadExtractor.extract(payload).contains(fact.optionId());
+                        case "SINGLE_CHOICE" -> fact.optionId().equals(SingleChoiceAnswerPayloadExtractor.extract(payload));
+                        default -> false;
+                    };
+                    if (!selected) continue;
+                    option = nodeWithId(presented.path("options"), fact.optionId());
+                    expected = nodeWithId(approved.path("options"), fact.optionId());
+                }
+                String observedLabel = option == null ? "" : option.path("label").asString();
+                if (rank == null && fact.comparisonId() != null
+                        && "6acc799d-1348-4f34-b756-593e9f5bfd52".equals(definition.toString()))
+                    observedLabel = fact.comparisonId() + " · " + observedLabel;
+                if (option == null || expected == null || !option.equals(expected)
+                        || !type.equals(fact.observationType()) || !evidence.equals(fact.evidenceType())
+                        || (rank == null && (!observedLabel.equals(fact.observedValue()) || fact.rank() != null))) continue;
+                result.add(new Source(q, presented.path("prompt").asString(), fact.optionId(), observedLabel,
+                        type, evidence, fact.answerRevision(), rank));
+            }
+        }
+        return result.stream().distinct().toList();
+    }
+
+    private JsonNode nodeWithId(JsonNode nodes, String id) {
+        for (var node : nodes) if (id.equals(node.path("id").asString())) return node;
+        return null;
     }
 
     // 정확한 전체 착장의 긍정 관측만 연결한다. 최종 충분성은 별도 B 정책에서 판정한다.
