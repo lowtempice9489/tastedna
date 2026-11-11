@@ -17,6 +17,7 @@ async function api(path, body){
  return client.request(path,body);
 }
 const errors={
+ CURRENT_TASTEDNA_MUST_BE_CLEARED:'현재 TasteDNA 설정을 먼저 해제한 뒤 결과를 삭제해주세요.',
  RESULT_STORAGE_FULL:'저장한 결과가 5개입니다. 마이페이지에서 보관하지 않을 결과를 저장 해제한 뒤 다시 저장해주세요.',
  INVALID_ANSWER:'응답을 확인해주세요. 선택 개수와 비교 순위를 지켜야 합니다.',
  IMAGE_DEFINITION_NOT_READY:'선택한 의류 테스트 정의가 아직 준비되지 않았어요. 다른 의류 범위를 선택하거나 나중에 다시 시도해주세요.',
@@ -206,15 +207,16 @@ async function myPage(){
  const dateLabel=r=>new Date(r.submittedAt||r.startedAt).toLocaleString('ko-KR');
  const completed=records.filter(r=>r.status==='SUBMITTED');
  const scopeLabel=r=>r.apparelScope==='womens'?'여성복 Simple':'남성복 Simple';
- const recordCard=(r,i)=>'<article class="mypage-record"><div><p class="eyebrow">'+(r.status==='SUBMITTED'?'제출 완료':'진행 중')+'</p><h3>'+esc(scopeLabel(r))+'</h3><p class="muted">'+(r.submittedAt?'제출':'시작')+' · '+esc(dateLabel(r))+'</p>'+recordResult(r)+'</div><button class="secondary" id="mypage-record-'+i+'">'+(r.status==='SUBMITTED'?'결과 보기':'이어서 답하기')+' →</button></article>';
+ const recordCard=(r,i)=>'<article class="mypage-record"><div><p class="eyebrow">'+(r.status==='SUBMITTED'?'제출 완료':'진행 중')+'</p><h3>'+esc(scopeLabel(r))+'</h3><p class="muted">'+(r.submittedAt?'제출':'시작')+' · '+esc(dateLabel(r))+'</p>'+recordResult(r)+'</div><button class="secondary" id="mypage-record-'+i+'">'+(r.status==='SUBMITTED'?'결과 보기':'이어서 답하기')+' →</button>'+(r.status==='SUBMITTED'?'<button class="secondary" id="record-delete-'+i+'">결과 삭제</button>':'')+'</article>';
  const latestCard=latest?'<section class="mypage-latest"><div><p class="eyebrow">최근 완료한 취향 기록</p><h2>'+esc(scopeLabel(latest))+'</h2>'+finalMarkup(latestInitial)+'<p class="muted">내가 직접 선택한 스타일</p><h3 class="mypage-style-title">'+(latestDirect?.candidateName?esc(latestDirect.candidateId+' · '+latestDirect.candidateName):styles.length?esc(styles.map(s=>s.label).join(' · ')):'직접 선호 리포트')+'</h3><p class="muted">'+(finalCandidate(latestInitial)?'Q02 직접 선택 기록은 위 종합 RESULT와 별도로 보존합니다.':'종합 유형이 아닌 Q02 직접 선택 기록입니다.')+'</p></div><div class="mypage-latest-actions"><button class="primary" id="mypage-latest">결과 리포트 보기 →</button><button class="secondary" id="mypage-retest">다시 테스트 →</button><button class="secondary" id="mypage-products">연결된 FORM 상품 보기 →</button></div></section>':'<section class="mypage-latest"><div><p class="eyebrow">YOUR FIRST TASTEDNA</p><h2>나의 취향 기록을 시작해보세요</h2><p class="muted">완료한 테스트가 생기면 여기에 직접 선택한 취향을 모아 보여드려요.</p></div></section>';
  const preferenceRows=[['Q02','선호 스타일'],['Q01','선호 색상'],['Q03','선호 실루엣'],['Q04','선호 패턴']].map(([id,label])=>{
   const selections=summary?.evidence?.find(e=>e.questionId===id)?.selections||[];
   return selections.length?'<div><span>'+label+'</span><p>'+esc(selections.map(s=>s.label).join(' · '))+'</p></div>':'';
  }).join('');
- main.innerHTML='<section class="form-mypage"><header class="mypage-heading"><div><p class="eyebrow">FORM / MY PAGE</p><h1>마이페이지</h1></div><p class="mypage-heading-note">내가 고른 취향을 다시 만나는 곳,<br><em>TasteDNA</em>와 함께</p></header><div class="mypage-body"><aside><div class="mypage-profile"><span aria-hidden="true">F</span><div><strong>FORM 회원</strong><p>'+esc(member.email)+'</p></div></div><nav aria-label="마이페이지 메뉴"><a href="#mypage-overview">마이페이지 홈</a><a class="selected" href="#mypage-taste">내 TasteDNA</a><a href="#mypage-saved">저장한 결과</a><a href="#mypage-recent">최근 테스트 기록</a></nav><button class="secondary" id="mypage-shop">FORM 컬렉션으로 →</button></aside><div class="mypage-content" id="mypage-overview"><section class="mypage-member"><div><strong>나의 FORM, 나의 TasteDNA</strong><p>직접 고른 취향을 모아 나다운 선택을 발견하세요.</p></div><div><span>저장한 결과</span><b>'+savedEntries.length+' / 5</b></div><div><span>제출 완료</span><b>'+completed.length+'</b></div></section><div class="mypage-tab">내 TasteDNA</div><section class="mypage-intro" id="mypage-taste"><div><p class="eyebrow">FORM의 취향 기록 서비스 · TasteDNA</p><h2>내 TasteDNA</h2><p>마음이 가는 선택에서 발견한 나의 취향.<br>직접 선택한 선호를 돌아보고, 연결된 상품을 살펴보세요.</p><div class="mypage-banner-tags"><span>취향 테스트</span><span>직접 선호 리포트</span><span>스타일 기반 상품 연결</span></div></div><div class="mypage-banner-art" aria-hidden="true"><i></i><i></i><span>Style</span><em>Taste</em></div></section><h2 class="mypage-section-title">카테고리별 TasteDNA</h2><div class="mypage-categories"><div><strong>의류</strong><small>현재 이용 가능</small><p>남성복·여성복 Simple<br>직접 선택한 패션 취향</p></div><div><strong>리빙 · 준비 중</strong><p>공간의 취향</p></div><div><strong>뷰티 · 준비 중</strong><p>나를 위한 취향</p></div><div><strong>라이프 · 준비 중</strong><p>일상의 취향</p></div></div>'+currentCard+'<div class="mypage-summary-grid">'+latestCard+'<section class="mypage-at-glance"><h2>내 취향 한눈에</h2><p class="muted">최근 완료 기록에서 직접 확인한 선호</p>'+(preferenceRows||'<p class="mypage-empty">아직 표시할 직접 선호 정보가 없습니다.</p>')+'</section></div><div class="mypage-history-grid"><section class="mypage-records" id="mypage-saved"><h2>저장한 결과 <small>'+savedEntries.length+' / 5</small></h2><p class="muted">직접 저장한 결과만 표시합니다. 현재 설정과 저장은 독립적입니다.</p><div class="mypage-saved-grid">'+savedRecords.map(r=>'<article><span class="mypage-saved-mark" aria-hidden="true">TasteDNA</span><h3>' + esc(scopeLabel(r)) + '</h3><p>' + esc(dateLabel(r)) + '</p>' + recordResult(r) + '<button class="secondary" id="mypage-saved-' + records.indexOf(r) + '">결과 보기 →</button><button class="secondary" id="saved-remove-' + records.indexOf(r) + '">저장 해제</button><button class="secondary" id="saved-current-' + records.indexOf(r) + '">현재 TasteDNA로 설정</button></article>').join('')+'</div>'+(!savedEntries.length?'<p class="mypage-empty">직접 저장한 결과가 없습니다. 제출 이력은 최근 테스트 기록에서 확인하세요.</p>':'')+'</section><section class="mypage-records" id="mypage-recent"><h2>최근 테스트 기록 <small>'+records.length+'</small></h2><p class="muted">최근 제출·시작 순서로 표시해요.</p>'+records.map(recordCard).join('')+(!records.length?'<p class="mypage-empty">현재 조회 가능한 Simple 기록이 없습니다.</p>':'')+'</section></div><button class="secondary" id="mypage-start">TasteDNA 알아보기 →</button></div></div></section>';
+ main.innerHTML='<section class="form-mypage"><header class="mypage-heading"><div><p class="eyebrow">FORM / MY PAGE</p><h1>마이페이지</h1></div><p class="mypage-heading-note">내가 고른 취향을 다시 만나는 곳,<br><em>TasteDNA</em>와 함께</p></header><div class="mypage-body"><aside><div class="mypage-profile"><span aria-hidden="true">F</span><div><strong>FORM 회원</strong><p>'+esc(member.email)+'</p></div></div><nav aria-label="마이페이지 메뉴"><a href="#mypage-overview">마이페이지 홈</a><a class="selected" href="#mypage-taste">내 TasteDNA</a><a href="#mypage-saved">저장한 결과</a><a href="#mypage-recent">최근 테스트 기록</a></nav><button class="secondary" id="mypage-shop">FORM 컬렉션으로 →</button></aside><div class="mypage-content" id="mypage-overview"><section class="mypage-member"><div><strong>나의 FORM, 나의 TasteDNA</strong><p>직접 고른 취향을 모아 나다운 선택을 발견하세요.</p></div><div><span>저장한 결과</span><b>'+savedEntries.length+' / 5</b></div><div><span>제출 완료</span><b>'+completed.length+'</b></div></section><div class="mypage-tab">내 TasteDNA</div><section class="mypage-intro" id="mypage-taste"><div><p class="eyebrow">FORM의 취향 기록 서비스 · TasteDNA</p><h2>내 TasteDNA</h2><p>마음이 가는 선택에서 발견한 나의 취향.<br>직접 선택한 선호를 돌아보고, 연결된 상품을 살펴보세요.</p><div class="mypage-banner-tags"><span>취향 테스트</span><span>직접 선호 리포트</span><span>스타일 기반 상품 연결</span></div></div><div class="mypage-banner-art" aria-hidden="true"><i></i><i></i><span>Style</span><em>Taste</em></div></section><h2 class="mypage-section-title">카테고리별 TasteDNA</h2><div class="mypage-categories"><div><strong>의류</strong><small>현재 이용 가능</small><p>남성복·여성복 Simple<br>직접 선택한 패션 취향</p></div><div><strong>리빙 · 준비 중</strong><p>공간의 취향</p></div><div><strong>뷰티 · 준비 중</strong><p>나를 위한 취향</p></div><div><strong>라이프 · 준비 중</strong><p>일상의 취향</p></div></div>'+currentCard+'<div class="mypage-summary-grid">'+latestCard+'<section class="mypage-at-glance"><h2>내 취향 한눈에</h2><p class="muted">최근 완료 기록에서 직접 확인한 선호</p>'+(preferenceRows||'<p class="mypage-empty">아직 표시할 직접 선호 정보가 없습니다.</p>')+'</section></div><div class="mypage-history-grid"><section class="mypage-records" id="mypage-saved"><h2>저장한 결과 <small>'+savedEntries.length+' / 5</small></h2><p class="muted">직접 저장한 결과만 표시합니다. 현재 설정과 저장은 독립적입니다.</p><div class="mypage-saved-grid">'+savedRecords.map(r=>'<article><span class="mypage-saved-mark" aria-hidden="true">TasteDNA</span><h3>' + esc(scopeLabel(r)) + '</h3><p>' + esc(dateLabel(r)) + '</p>' + recordResult(r) + '<button class="secondary" id="mypage-saved-' + records.indexOf(r) + '">결과 보기 →</button><button class="secondary" id="saved-remove-' + records.indexOf(r) + '">저장 해제</button><button class="secondary" id="saved-current-' + records.indexOf(r) + '">현재 TasteDNA로 설정</button><button class="secondary" id="saved-delete-' + records.indexOf(r) + '">결과 삭제</button></article>').join('')+'</div>'+(!savedEntries.length?'<p class="mypage-empty">직접 저장한 결과가 없습니다. 제출 이력은 최근 테스트 기록에서 확인하세요.</p>':'')+'</section><section class="mypage-records" id="mypage-recent"><h2>최근 테스트 기록 <small>'+records.length+'</small></h2><p class="muted">최근 제출·시작 순서로 표시해요.</p>'+records.map(recordCard).join('')+(!records.length?'<p class="mypage-empty">현재 조회 가능한 Simple 기록이 없습니다.</p>':'')+'</section></div><button class="secondary" id="mypage-start">TasteDNA 알아보기 →</button></div></div></section>';
  savedRecords.forEach(r=>{
   const i=records.indexOf(r);
+  document.querySelector('#saved-delete-'+i).onclick=()=>action(()=>deleteMemberResult(r.sessionId,currentEntry?.sessionId===r.sessionId));
   document.querySelector('#mypage-saved-'+i).onclick=()=>action(()=>loadSession(r.sessionId));
   document.querySelector('#saved-remove-'+i).onclick=()=>action(async()=>{await api('/member/results/'+r.sessionId+'/unsave',{});await myPage();});
 
@@ -238,6 +240,7 @@ async function myPage(){
   document.querySelector('#current-clear').onclick=()=>action(async()=>{await api('/member/results/current/clear',{});await myPage();});
  }
  main.querySelectorAll('aside a').forEach(a=>a.onclick=e=>{e.preventDefault();main.querySelector(a.getAttribute('href'))?.scrollIntoView({behavior:'smooth',block:'start'});});
+ records.forEach((r,i)=>{if(r.status==='SUBMITTED')document.querySelector('#record-delete-'+i).onclick=()=>action(()=>deleteMemberResult(r.sessionId,currentEntry?.sessionId===r.sessionId));});
  records.forEach((r,i)=>document.querySelector('#mypage-record-'+i).onclick=()=>action(async()=>{
   returnTo=r.sessionId;
   if(r.status==='IN_PROGRESS')await api('/sessions/'+encodeURIComponent(r.sessionId)+'/resume',{});
@@ -296,6 +299,16 @@ function directResultMarkup(initial){
  return direct?'<p>직접 선택한 스타일 · '+esc(direct.candidateId+' · '+direct.candidateName)+'</p>':'<p>직접 선호와 종합 결과는 결과 리포트에서 확인하세요.</p>';
 }
 
+async function deleteMemberResult(id,isCurrent=false){
+ if(isCurrent){toast('현재 TasteDNA 설정을 먼저 해제한 뒤 결과를 삭제해주세요.');return;}
+ if(!window.confirm('이 테스트 결과를 영구 삭제할까요? 저장 슬롯, 결과 기록, 원본 답변이 함께 삭제되며 복구할 수 없습니다.'))return;
+ await api('/member/results/'+encodeURIComponent(id)+'/delete',{});
+ if(session?.sessionId===id){session=null;answers={};questions=[];step=0;}
+ returnTo='mypage';
+ await myPage();
+ toast('테스트 결과를 삭제했습니다.');
+}
+
 async function renderResultManagement(id){
  const box=document.querySelector('#report-management');
 
@@ -327,8 +340,10 @@ async function renderResultManagement(id){
       +(state.saved?'저장 해제':'결과 저장')
       +'</button> '
       +currentControl
+      +'<button class="secondary" id="result-delete">결과 삭제</button>'
       +'</section>';
 
+  box.querySelector('#result-delete').onclick=()=>action(()=>deleteMemberResult(id,state.current));
   box.querySelector('#result-save').onclick=()=>action(async()=>{
    await api('/member/results/'+id+(state.saved?'/unsave':'/save'),{});
    await renderResultManagement(id);

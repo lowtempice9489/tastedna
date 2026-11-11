@@ -11,6 +11,7 @@ import com.tastedna.scoring.application.PreferenceSummaryService;
 import com.tastedna.session.api.*;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.application.MemberResultService;
+import com.tastedna.session.application.MemberResultCleanupService;
 import com.tastedna.session.application.GuestSimpleService;
 import com.tastedna.session.persistence.*;
 import org.junit.jupiter.api.*;
@@ -38,7 +39,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
         ImageAssessmentController.class, PreferenceSummaryController.class, com.tastedna.scoring.api.SimpleInitialCandidateController.class,
         com.tastedna.demo.DemoProductMatchController.class,
         com.tastedna.config.FormClientConfigController.class, com.tastedna.demo.DemoProductController.class})
-@Import({MemberResultService.class, GuestSimpleService.class, MemberSecurityConfig.class, MemberAuthService.class, TestSessionService.class, PreferenceSummaryService.class,
+@Import({MemberResultCleanupService.class, MemberResultService.class, GuestSimpleService.class, MemberSecurityConfig.class, MemberAuthService.class, TestSessionService.class, PreferenceSummaryService.class,
         com.tastedna.scoring.application.SimpleInitialCandidateService.class, com.tastedna.demo.DemoProductMatchService.class})
 @ActiveProfiles("member-auth")
 class MemberAuthHttpTest {

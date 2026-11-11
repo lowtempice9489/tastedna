@@ -509,3 +509,23 @@ test('guest result uses response bundle only and offers no retention or transfer
   assert.equal(node('#download').hidden,true);
  }
 });
+
+
+test('result deletion requires confirmation and refreshes mypage after clearing deleted session memory',async()=>{
+ const {run,client,calls}=screen();
+ client.request=async(path,body)=>{calls.push([path,body]);return {};};
+ run("session={sessionId:'remove-me'};answers={Q01:{selectedOptionIds:['A']}};questions=[{}];step=4;window.confirm=()=>false;myPage=async()=>{globalThis.refreshed=true;}");
+ await run("deleteMemberResult('remove-me')");
+ assert.equal(calls.length,0);assert.equal(run('session.sessionId'),'remove-me');
+ run('window.confirm=()=>true');await run("deleteMemberResult('remove-me')");
+ assert.equal(calls.length,1);assert.equal(calls[0][0],'/member/results/remove-me/delete');
+ assert.equal(run('session'),null);assert.equal(run('Object.keys(answers).length'),0);
+ assert.equal(run('questions.length'),0);assert.equal(run('refreshed'),true);assert.equal(run('returnTo'),'mypage');
+});
+
+test('current TasteDNA deletion is refused in the UI before confirmation or request',async()=>{
+ const {run,node,calls}=screen();
+ run("window.confirm=()=>{throw new Error('current result must not prompt deletion');}");
+ await run("deleteMemberResult('current-result',true)");
+ assert.equal(calls.length,0);assert.match(node('#notice').textContent,/현재 TasteDNA 설정을 먼저 해제/);
+});

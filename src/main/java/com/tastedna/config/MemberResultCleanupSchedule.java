@@ -28,7 +28,7 @@ public class MemberResultCleanupSchedule {
     // 검증 전 자동 실행을 막기 위해 명시적으로 활성화한다. 기본 실행 시각은 매일 UTC 03:00이다.
     @Scheduled(cron = "${tastedna.result-cleanup.cron:0 0 3 * * *}", zone = "UTC")
     public void cleanDaily() {
-        var cutoff = LocalDateTime.now(ZoneOffset.UTC).minusDays(90);
+        var cutoff = LocalDateTime.now(ZoneOffset.UTC).minusDays(5);
         String afterId = "";
         int deleted = 0;
         int failed = 0;
