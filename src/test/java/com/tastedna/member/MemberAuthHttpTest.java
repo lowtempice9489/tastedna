@@ -12,6 +12,7 @@ import com.tastedna.session.api.*;
 import com.tastedna.session.application.TestSessionService;
 import com.tastedna.session.application.MemberResultService;
 import com.tastedna.session.application.MemberResultCleanupService;
+import com.tastedna.session.application.MemberResultExpiryService;
 import com.tastedna.session.application.GuestSimpleService;
 import com.tastedna.session.persistence.*;
 import org.junit.jupiter.api.*;
@@ -52,6 +53,7 @@ class MemberAuthHttpTest {
     @MockitoBean TestSessionRepository sessions;
     @MockitoBean SessionAnswerRepository answers;
     @MockitoBean MemberResultRetentionRepository retention;
+    @MockitoBean MemberResultExpiryService expiryService;
     @MockitoBean AuthAttemptLimiter limiter;
     @MockitoBean com.tastedna.demo.DemoProductRepository products;
     @MockitoBean com.tastedna.scoring.application.StyleCoreCandidateService initialCandidates;
@@ -86,6 +88,13 @@ class MemberAuthHttpTest {
             FormMember member = call.getArgument(0);
             stored.put(member.getEmail(), member); return member;
         });
+
+        when(expiryService.review(anyString(), any(UUID.class)))
+                .thenAnswer(invocation -> new MemberResultExpiryService.Review(
+                        invocation.getArgument(1).toString(),
+                        MemberResultExpiryService.Status.TEMPORARY,
+                        null
+                ));
     }
     private Browser csrfToken(MockHttpSession session) throws Exception {
         var request = get("/api/v1/auth/csrf");
